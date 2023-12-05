@@ -1,6 +1,8 @@
 
 # import
 import os
+import sys
+sys.path.insert(1, "../../thirdParty")
 import math
 import random
 import datetime
