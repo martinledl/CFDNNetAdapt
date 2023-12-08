@@ -340,15 +340,15 @@ algorithm.minMax = "12_minMaxAng.dat"
 # algorithm parameters
 algorithm.nSam = 2000
 algorithm.deltaNSam = 500
-algorithm.nNN = 1
+algorithm.nNN = 10
 algorithm.minN = 2
-algorithm.maxN = 4
+algorithm.maxN = 20
 algorithm.nHidLay = 3
 algorithm.tol = 1e-3
 algorithm.iMax = 200
 algorithm.dRN = 0
-algorithm.nComps = 2
-algorithm.nSeeds = 2
+algorithm.nComps = 8
+algorithm.nSeeds = 5
 
 # parameters for ANN training
 algorithm.trainPro = 75
@@ -360,9 +360,9 @@ algorithm.rEStop = 1e-5
 # parameters for MOP
 algorithm.pMin = 0.0
 algorithm.pMax = 1.0
-algorithm.offSize = 5
-algorithm.popSize = 5
-algorithm.nGens = 3
+algorithm.offSize = 500
+algorithm.popSize = 500
+algorithm.nGens = 30
 
 # evaluation funcs
 algorithm.dnnEvalFunc = dnnEvaluation
