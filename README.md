@@ -3,6 +3,7 @@ The CFDNNetAdapt is a hybrid CFD-DNN optimization algorithm for CFD-based shape 
 
 ## Third party code
 MOEA --  D. Hadka, Platypus, A Free and Open Source Python Library for Multiobjective Optimization, 2020. URL: https://github.com/Project-Platypus/Platypus
+
 DNNs --  D. Atabay, Institute for Energy Economy and Application Technology,665 Technische Universität München, pyrenn: A recurrent neural network tool-box for python and matlab, 2018. URL: https://pyrenn.readthedocs.io/en/latest/.
 
 ## Cite this work as (article prepared for submission)
