@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# to know, where you are, in space-time
+cd $(dirname $0)
+date "+%d/%m/%Y %T"
+
+# set openFoam environment
+source /opt/openfoam8/etc/bashrc
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+# Clear old IC
+rm -rf 0
+
+# create base mesh
+runApplication blockMesh
+
+# to avoid launching abrt
+if grep -q 'Failed' log.blockMesh
+then
+        exit 1
+fi
+
+if grep -q 'Foam::error' log.blockMesh
+then
+        exit 1
+fi
+
+# run checkMesh
+runApplication checkMesh -meshQuality -allGeometry -allTopology
+
+# to avoid wasting computational time
+python meshCheck.py || exit 1
+
+#~ # copy IC
+#~ mkdir -p 0
+#~ cp -rf 0.org/* 0
+
+#~ # create files for postprocessing
+#~ paraFoam -touch
+
+#~ # get the solver application
+#~ application=`getApplication`
+
+#~ # run the application
+#~ runApplication $application
