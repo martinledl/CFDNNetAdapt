@@ -14,3 +14,6 @@ Prepared for python3 (https://www.python.org/downloads/release/python-31010/) an
 
 ## Example run
 cd ./example/convDifShapeOptim && python3 Allrun.py
+
+## Testing run
+cd ./example/convDifShapeOptim && python3 testRun.py
