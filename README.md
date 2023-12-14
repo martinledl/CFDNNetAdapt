@@ -12,8 +12,13 @@ L. Kubíčková and O. Gebouský and J. Haidl and M. Isoz.: CFDNNetAdapt: An ada
 ## Compatability
 Prepared for python3 (https://www.python.org/downloads/release/python-31010/) and OpenFOAMv8 (https://openfoam.org/version/8/).
 
+## Prepapare the python environment
+
 ## Example run
 cd ./example/convDifShapeOptim && python3 Allrun.py
 
 ## Testing run
 cd ./example/convDifShapeOptim && python3 testRun.py
+
+## License
+CFDNNetAdapt is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software  Foundation, either version 3 of the License, or (at your option) any later version.  See http://www.gnu.org/licenses/, for a description of the GNU General Public License terms under which you can copy the files.
