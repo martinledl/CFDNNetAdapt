@@ -18,15 +18,12 @@
 # along with Platypus.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import absolute_import, division, print_function
 
-import os
 import copy
 import math
 import random
-import numpy as np
 from .core import PlatypusError, Solution, ParetoDominance, Generator, Selector, Variator, Mutation, EPSILON
 from .types import Real, Binary, Permutation, Subset
 from .tools import add, subtract, multiply, is_zero, magnitude, orthogonalize, normalize, random_vector, zeros, roulette
-from topoCheckV2 import *
 
 def clip(value, min_value, max_value):
     return max(min_value, min(value, max_value))
@@ -210,34 +207,6 @@ class GAOperator(Variator):
         
     def evolve(self, parents):
         return list(map(self.mutation.evolve, self.variation.evolve(parents)))
-
-class GAOperatorWithTopoCorrection(Variator):
-
-    def __init__(self, variation, mutation, xDim, yDim, yLim):
-        super(GAOperatorWithTopoCorrection, self).__init__(variation.arity)
-        self.variation = variation
-        self.mutation = mutation
-        self.xDim = xDim
-        self.yDim = yDim
-        self.yLim = yLim
-
-    def evolve(self, parents):
-        individua = list(map(self.mutation.evolve, self.variation.evolve(parents)))
-        for individuum in individua:
-            genom = individuum.variables[0]
-
-            
-            data = np.reshape(genom, (self.yDim,self.xDim))
-            data = np.flipud(data)
-
-            flowAccess, correctedData = topoCheck(data, correct = True, yLim = self.yLim)
-            correctedData = np.flipud(correctedData)
-
-            if flowAccess == self.xDim:
-                genom = np.reshape(correctedData, (self.yDim*self.xDim,))
-                individuum.variables[0] = genom
-
-        return individua
     
 class CompoundMutation(Mutation):
     
@@ -650,7 +619,7 @@ class HUX(Variator):
         result1 = copy.deepcopy(parents[0])
         result2 = copy.deepcopy(parents[1])
         problem = result1.problem
-
+        
         if random.uniform(0.0, 1.0) <= self.probability:
             for i in range(problem.nvars):
                 if isinstance(problem.types[i], Binary):
