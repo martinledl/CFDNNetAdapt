@@ -14,6 +14,7 @@ Prepared for python3 (https://www.python.org/downloads/release/python-31010/) an
 
 ## Prepare the python environment
 used python3 packages -- os, io, math, sys, shutil, numpy, scipy, re, copy, csv, dill, multiprocessing, glob, subprocess, operator, random, datetime
+
 python3 packages used by thirdParty codes -- six, pandas, functools, traceback, mpi4py, unittest, pickle, abc, time, logging, collections, sets
 
 ## Example run
