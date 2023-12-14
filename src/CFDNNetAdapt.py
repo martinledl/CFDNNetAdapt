@@ -10,7 +10,7 @@ import numpy as np
 import dill as pickle
 import multiprocessing
 import pyrennModV3 as prn
-import platypusModV3 as plat
+import platypusModV2 as plat
 from operator import itemgetter
 
 class CFDNNetAdapt:
