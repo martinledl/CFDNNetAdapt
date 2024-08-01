@@ -9,7 +9,7 @@ import math
 import numpy as np
 import dill as pickle
 import multiprocessing
-from CFDNNetAdapt import *
+from CFDNNetAdaptV2 import *
 from postProcesser import *
 from configureAndRun import *
 
@@ -80,12 +80,12 @@ noteDict = {
     "value not found":6,
 }
 
-# cfd evaluation func
-def cfdEvaluation(i):
+# sample evaluation function
+def smpEvaluation(i):
     caseID = os.getpid()
 
     # evaluate the cases
-    cfdOut = [0] * (algorithm.nObjs)
+    smpOut = [0] * (algorithm.nObjs)
     isBad = False
     note = 0
 
@@ -94,7 +94,7 @@ def cfdEvaluation(i):
 
     # rescale the pars
     for p in range(len(netPars)):
-        netPars[p] = netPars[p]*(algorithm.cfdMaxs[p] - algorithm.cfdMins[p]) + algorithm.cfdMins[p]
+        netPars[p] = netPars[p]*(algorithm.smpMaxs[p] - algorithm.smpMins[p]) + algorithm.smpMins[p]
 
     # assign pars
     convCPs = [[netPars[0], netPars[1]], [netPars[2], netPars[3]]]
@@ -175,13 +175,13 @@ def cfdEvaluation(i):
                     if S <= -1:
                         note = noteDict.get("strange values")
 
-                    cfdOut[cID] += S
+                    smpOut[cID] += S
 
                 else:
                     note = noteDict.get("value not found")
 
                 # evaluate total length
-                cfdOut[cID+1] += LConv+LDiff
+                smpOut[cID+1] += LConv+LDiff
 
         # clean simulation folder
         if cleanSims:
@@ -189,9 +189,9 @@ def cfdEvaluation(i):
                 sh.rmtree(caseDir)
 
     # rescale for ANN
-    cfdOut = [o/len(QInLst) for o in cfdOut]
-    for co in range(len(cfdOut)):
-        cfdOut[co] = (cfdOut[co] - algorithm.cfdMins[algorithm.nPars+co])/(algorithm.cfdMaxs[algorithm.nPars+co] - algorithm.cfdMins[algorithm.nPars+co])
+    smpOut = [o/len(QInLst) for o in smpOut]
+    for co in range(len(smpOut)):
+        smpOut[co] = (smpOut[co] - algorithm.smpMins[algorithm.nPars+co])/(algorithm.smpMaxs[algorithm.nPars+co] - algorithm.smpMins[algorithm.nPars+co])
 
     # check notes
     if not note == 0:
@@ -200,8 +200,8 @@ def cfdEvaluation(i):
     # compute the error
     delta = 0
     if not isBad:
-        delta += abs(netOuts[0] - cfdOut[0])
-        delta += abs(netOuts[1] - cfdOut[1])
+        delta += abs(netOuts[0] - smpOut[0])
+        delta += abs(netOuts[1] - smpOut[1])
 
     else:
         delta = -1
@@ -209,7 +209,7 @@ def cfdEvaluation(i):
     algorithm.outFile.write("Doing CFD check no. " + str(algorithm.toCompare.index(i)) + " with parameters " + str(netPars) + "\n")
     algorithm.outFile.write("CFD done with note " + str(note) + "\n")
     algorithm.outFile.write("no. " + str(algorithm.toCompare.index(i)) + " ANN outs were " + str(netOuts) + "\n")
-    algorithm.outFile.write("no. " + str(algorithm.toCompare.index(i)) + " CFD outs were " + str(cfdOut) + " delta " + str(delta) + "\n")
+    algorithm.outFile.write("no. " + str(algorithm.toCompare.index(i)) + " CFD outs were " + str(smpOut) + " delta " + str(delta) + "\n")
     algorithm.outFile.write("CFD check no. " + str(algorithm.toCompare.index(i)) + " done\n")
     algorithm.outFile.flush()
 
@@ -222,7 +222,7 @@ def dnnEvaluation(vars):
     # rescale the pars
     netPars = list()
     for p in range(len(vars)):
-        netPars.append(vars[p]*(algorithm.cfdMaxs[p] - algorithm.cfdMins[p]) + algorithm.cfdMins[p])
+        netPars.append(vars[p]*(algorithm.smpMaxs[p] - algorithm.smpMins[p]) + algorithm.smpMins[p])
 
     convCPs = [[netPars[0], netPars[1]], [netPars[2], netPars[3]]]
     diffuserCPs = [[netPars[4], netPars[5]],[netPars[6], netPars[7]],[netPars[8],netPars[9]],[netPars[10],netPars[11]]]
@@ -318,7 +318,7 @@ def dnnEvaluation(vars):
         costOut = costOut.mean(axis = 0)
 
         totLen = LDiff+LConv
-        totLen = (totLen - algorithm.cfdMins[-1])/(algorithm.cfdMaxs[-1] - algorithm.cfdMins[-1])
+        totLen = (totLen - algorithm.smpMins[-1])/(algorithm.smpMaxs[-1] - algorithm.smpMins[-1])
         return [costOut,totLen]
 
     else:
@@ -332,7 +332,7 @@ algorithm.nPars = 14
 algorithm.nObjs = 2
 algorithm.nOuts = 1
 algorithm.mainDir = "01_algoRuns/"
-algorithm.cfdDir = "00_prepCFDData/"
+algorithm.smpDir = "00_prepCFDData/"
 algorithm.prbDir = "14_LConv2CPLDiff4CP/"
 algorithm.dataNm = "10_platypusCFDAllSolutions.dat"
 algorithm.minMax = "12_minMaxAng.dat"
@@ -366,14 +366,14 @@ algorithm.nGens = 30
 
 # evaluation funcs
 algorithm.dnnEvalFunc = dnnEvaluation
-algorithm.cfdEvalFunc = cfdEvaluation
+algorithm.smpEvalFunc = smpEvaluation
 
 # initialize
 algorithm.initialize()
 
 # define constrains
 constr = [maxLength - LGap - LMxT]
-with open(algorithm.cfdDir + algorithm.prbDir + algorithm.minMax, 'r') as file:
+with open(algorithm.smpDir + algorithm.prbDir + algorithm.minMax, 'r') as file:
     reader = csv.reader(file)
 
     cols = next(reader)
