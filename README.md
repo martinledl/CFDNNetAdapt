@@ -7,7 +7,7 @@ MOEA --  D. Hadka, Platypus, A Free and Open Source Python Library for Multiobje
 DNNs --  D. Atabay, Institute for Energy Economy and Application Technology,665 Technische Universität München, pyrenn: A recurrent neural network tool-box for python and matlab, 2018. URL: https://pyrenn.readthedocs.io/en/latest/.
 
 ## Cite this work as (article prepared for submission)
-L. Kubíčková and O. Gebouský and J. Haidl and M. Isoz.: An adaptive shape optimization algorithm coupling computational fluid dynamics and deep neural networks. Submitted in January 2024.
+article in preparation
 
 ## Compatability
 Prepared for python3 (https://www.python.org/downloads/release/python-31010/) and OpenFOAMv8 (https://openfoam.org/version/8/).
