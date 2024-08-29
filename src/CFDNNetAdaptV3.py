@@ -17,7 +17,7 @@ from operator import itemgetter
 
 # version 1 - more parallel evaluation
 # version 2 - more separation in functions, renaming
-# version 3 - adaptive samples step, archive moea data
+# version 3 - adaptive samples step, archive moea data, non-dominated solutions search by platypus, more commentary
 
 class CFDNNetAdapt:
     def __init__(self):
@@ -28,19 +28,18 @@ class CFDNNetAdapt:
 
         # CFDNNetAdapt hyperparameters
         self.nSam = None # initial number of samples
-        self.deltaNSams = None # factor to change number of samples
+        self.deltaNSams = None # factor to change number of samples, may be a list to change among iterations
         self.nNN = None # number of neural networks to test
+        self.tol = None # required tolerance
+        self.iMax = None # maximum number of iterations
+        self.dRN = None # factor to change variance of random number of neurons selection
+        self.nComps = None # number of verification checks
+        self.nSeeds = None # number of seeds
+
+        # DNN parameters
         self.minN = None # minimal number of neurons
         self.maxN = None # maximal number of neurons
         self.nHidLay = None # number of hidden layer
-        self.tol = None # required tolerance
-        self.iMax = None # maximum number of iterations
-        self.dRN = None # factor to change rN
-        self.nComps = None # number of samples verifications check
-        self.nSeeds = None # number of seeds
-        self.iteration = 1 # global iteration counter
-
-        # DNN parameters
         self.trainPro = None # percentage of samples used for training
         self.valPro = None # percentage of samples used for validation
         self.testPro = None # percentage of samples used for testing
@@ -67,14 +66,14 @@ class CFDNNetAdapt:
         self.smpEvalFunc = None # custom function for sample evaluation in verification
 
         # flags
-        self.toPlotReg = False # wheter to create regression plots
+        self.toPlotReg = False # wheter to create regression plots, requires uncommenting matplotlib import
 
     def initialize(self):
         # prepare DNN specifics
-        self.netTransfer = [prn.tanhTrans]*self.nHidLay
-        self.nValFails = self.nHidLay*10
-        self.nHid = [(self.maxN + self.minN)/2 for i in range(self.nHidLay)]
-        self.rN = (self.maxN - self.minN)/2
+        self.netTransfer = [prn.tanhTrans]*self.nHidLay # transfer functions
+        self.nValFails = self.nHidLay*10 # allowed number of failed validations
+        self.nHid = [(self.maxN + self.minN)/2 for i in range(self.nHidLay)] # mean number of neurons for each layer
+        self.rN = (self.maxN - self.minN)/2 # variance for random number of neurons selection
         self.rN *= 0.5
 
         # prepare directories
@@ -87,22 +86,27 @@ class CFDNNetAdapt:
             self.runDir = self.mainDir + self.specRunDir
         self.prepOutDir(self.runDir)
 
-        # prepare samples
+        # prepare mins and maxs for scaling
         self.smpMins, self.smpMaxs = self.getScalesFromFile(self.smpDir + self.prbDir, self.dataNm)
+
+        # prepare samples
         self.source, self.target = self.loadAndScaleData(self.smpDir + self.prbDir, self.dataNm, self.nPars, self.nOuts)
         self.souall, self.tarall = self.loadAndScaleData(self.smpDir + self.prbDir, self.dataNm, self.nPars, self.nObjs)
-        self.maxSam = np.shape(self.source)[1]
+        self.maxSam = np.shape(self.source)[1] # maximum number of asmples
 
     def run(self):
         # start log
         self.startLog()
 
-        # run algorithm
+        # prepare flags and counters
         last = False
         epsilon = 1
         prevSamTotal = 0
         smpNondoms = None
-        while epsilon > self.tol:
+        self.iteration = 1 # global iteration counter
+
+        # run algorithm
+        while epsilon > self.tol and self.iteration <= self.iMax:
             # prepare step-directory to save data
             stepDir = self.runDir + "step_%04d/" % self.iteration
             self.prepOutDir(stepDir)
@@ -178,13 +182,17 @@ class CFDNNetAdapt:
             # update parameters
             prevSamTotal, nSamTotal, last = self.prepareForNextIter(bestNet, prevSamTotal, nSamTotal)
 
+        # finish log
         self.outFile.write("Done. Required error reached\n")
         self.finishLog()
 
     def startLog(self):
+        # open file and write header
         self.outFile = open(self.runDir + "log.out", 'w')
         self.outFile.write("\nstartTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
         self.outFile.write("===================SET UP=====================\n")
+
+        # prepare things to write
         toWrite = [
                 "nPars", "nOuts", "nObjs",
                 "nSam","deltaNSams",
@@ -196,27 +204,34 @@ class CFDNNetAdapt:
                 "pMin","pMax",
                 "offSize","popSize","nGens"]
 
+        # write
         for thing in toWrite:
             self.outFile.write(thing + " = " + str(eval("self." + thing)) + "\n")
+
+        # finish
         self.outFile.write("\n")
         self.outFile.flush()
 
     def finishLog(self):
+        # write ending and close
         self.outFile.write("==============================================\n")
         self.outFile.write("endTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
         self.outFile.close()
 
     def prepareSamples(self):
+        # total number of samples used in iteration
         nSamTotal = int(self.nSam/self.trainPro*100)
         
-        # prepare samples
+        # take part of samples
         cSource = self.source[:,:nSamTotal]
         cTarget = self.target[:,:nSamTotal]
         
+        # get training, validation and testing lengths
         trainLen = int(self.trainPro/100*nSamTotal)
         valLen = int(self.valPro/100*nSamTotal)
         testLen = nSamTotal - trainLen - valLen
         
+        # sort samples
         self.sourceTr = cSource[:,:trainLen]
         self.targetTr = cTarget[:,:trainLen]
         
@@ -229,34 +244,46 @@ class CFDNNetAdapt:
         return nSamTotal, trainLen, valLen, testLen
 
     def getNondomSolutionsFromSamples(self, prevSamTotal, nSamTotal, smpNondoms = None):
-        aSource = self.souall[:,prevSamTotal:nSamTotal]
-        aTarget = self.tarall[:,prevSamTotal:nSamTotal]
+        # get samples added in this iteration
+        aSource = self.souall[:,:nSamTotal]
+        aTarget = self.tarall[:,:nSamTotal]
+
+        # concatenate with last iteration nondominated solutions
         aAll = np.append(aSource, aTarget, axis = 0)
         if self.iteration > 1:
             aAll = np.concatenate((smpNondoms.T,aAll), axis = 1)
 
+        # find current nondominated solutions
         nondoms = self.findNondominatedSolutions(aAll.T, [1,1])
         return nondoms
 
     def checkLastBestDNN(self, netNondoms, smpNondoms):
+        # compare pareto fronts
         dists = self.compareParetoFronts(netNondoms, smpNondoms)
         
+        # compute and write total error
         pError = sum(dists)/len(dists)
         self.outFile.write("Error of best DNN from last iteration is " + str(pError) + "\n")
         self.outFile.flush()
         
+        # end run if error small enough
         if pError < self.tol:
             self.outFile.write("Done. Last best DNN error < " + str(self.tol) + "\n")
             self.finishLog()
             exit()
 
     def createRandomDNNs(self, stepDir):
+        # prepare save
         netStructs = list()
         netNms = list()
         netDirs = list()
+
+        # create DNNs
         for n in range(self.nNN):
+            # create one architecture
             netStruct, netNm, netDir, skip = self.createNN(stepDir)
         
+            # skip if duplicate
             if skip:
                 continue
 
@@ -272,17 +299,21 @@ class CFDNNetAdapt:
         return netStructs, netNms, netDirs
 
     def createNN(self, stepDir):
+        # prepare flags and counters
         newCheck = True
         skip = False
         netTry = 1
+
+        # try to create new random architecture
         while newCheck:
-            # generate the network architecture
+            # compute allowed minimum and maximum
             nMins = list()
             nMaxs = list()
             for i in range(self.nHidLay):
                 nMins.append(max(int(self.nHid[i] - self.rN), self.minN))
                 nMaxs.append(min(int(self.nHid[i] + self.rN), self.maxN))
         
+            # generate random number of neurons
             netStruct = [self.nPars]
             for i in range(self.nHidLay):
                 netStruct += [random.randint(nMins[i], nMaxs[i])]
@@ -296,6 +327,7 @@ class CFDNNetAdapt:
             if not os.path.exists(netDir):
                 newCheck = False
         
+            # ned if tried too many times
             elif netTry >= self.nNN:
                 newCheck = False
                 skip = True
@@ -305,17 +337,19 @@ class CFDNNetAdapt:
         return netStruct, netNm, netDir, skip
 
     def packDataForDNNTraining(self, netStructs):
+        # pack arguments for parallel evaluation of dnnSeedEvaluation function
         arguments = list()
         for n in range(len(netStructs)):
             for i in range(self.nSeeds):
-                argument = ([netStructs[n],
-                    self.netTransfer,
-                    self.sourceTr, self.targetTr,
-                    self.sourceVl, self.targetVl,
-                    self.sourceTe, self.targetTe,
-                    self.kMax, self.rEStop, self.nValFails, self.dnnVerbose,
-                    self.runDir, self.iteration,
-                    i])
+                argument = ([netStructs[n], # network architectures
+                    self.netTransfer, # transfer functions
+                    self.sourceTr, self.targetTr, # training samples
+                    self.sourceVl, self.targetVl, # validatioin samples
+                    self.sourceTe, self.targetTe, # testing samples
+                    self.kMax, self.rEStop, # maximum number of iterations and required training error
+                    self.nValFails, self.dnnVerbose, # number of allowed validation failes and verbose flag
+                    self.runDir, self.iteration, # save directory and iteration counter
+                    i]) # parallel counter
                 arguments.append(argument)
 
         return arguments
@@ -327,10 +361,10 @@ class CFDNNetAdapt:
         # unpack agruments
         netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, nValFails, dnnVerbose, runDir, iteration, seed = args 
 
-        # create the network
+        # create the network in pyrenn
         net = prn.CreateNN(netStruct, transfers = netTransfer)
     
-        # train the network
+        # train the network using the Levenberg-Marquardt algorithm
         prn.train_LMWithValData(
             sourceTr, targetTr,
             sourceVl, targetVl,
@@ -366,9 +400,13 @@ class CFDNNetAdapt:
         return cError
 
     def optimizeAndFindBestDNN(self, netStructs, netNms, netDirs, smpNondoms):
+        # prepare
         lError = 1e3
         bestNet = ""
+
+        # loop over net architectures
         for n in range(len(netStructs)):
+            # load architecture, name and save directory
             netStruct = netStructs[n]
             netNm = netNms[n]
             netDir = netDirs[n]
@@ -377,7 +415,7 @@ class CFDNNetAdapt:
             parallelNum = self.nSeeds*self.nNN
             moea, nondoms = self.runDNNOptimization(netStruct, netNm, netDir, parallelNum)
 
-            # find nondominated solutions 
+            # convert nondominated solutions to array
             netNondoms = list()
             for i in range(len(nondoms)):
                 netNondoms.append(nondoms[i].variables[:] + nondoms[i].objectives[:])
@@ -394,7 +432,7 @@ class CFDNNetAdapt:
         return bestNet, netNondoms
     
     def runDNNOptimization(self, netStruct, netNm, netDir, parallelNum):
-        # prepare for optimization
+        # list net save directory
         ls = os.listdir(netDir)
         ls = [i for i in ls if not ".png" in i]
     
@@ -411,7 +449,7 @@ class CFDNNetAdapt:
         problem.types[:] = [plat.Real(self.pMin,self.pMax)]*self.nPars
         problem.function = self.dnnEvalFunc
 
-        # run the optimization algorithm
+        # run the optimization algorithm with archiving data
         with plat.MultiprocessingEvaluator(parallelNum) as evaluator:
             moea = plat.NSGAII(problem, population_size = self.popSize, offspring_size = self.offSize, evaluator = evaluator, archive = plat.Archive())
             moea.run(self.nGens*self.popSize)
@@ -427,6 +465,7 @@ class CFDNNetAdapt:
         return moea, moea.result
 
     def runVerification(self, bestNet, stepDir):
+        # choose random datapoints to verify
         self.toCompare = list()
         while len(self.toCompare) < self.nComps:
             toAdd = random.randint(0, self.popSize-1)
@@ -438,7 +477,7 @@ class CFDNNetAdapt:
         with open(netDir + "optimOut.plat", 'rb') as file:
             [self.population, nondoms, algorithm, problem] = pickle.load(file, encoding="latin1")
     
-        # run samples verification
+        # run verification
         with multiprocessing.Pool(self.nComps) as p:
             deltas = p.map(self.smpEvalFunc, self.toCompare)
     
@@ -447,8 +486,9 @@ class CFDNNetAdapt:
         deltas = [i for i in deltas if i >= 0]
         delta = sum(deltas)
     
-        # choose substitute solutions for verification
+        # choose substitute solutions for non-evaluated ones
         if bads > 0:
+            # choose random datapoints
             secToCompare = list()
             while len(secToCompare) < bads:
                 toAdd = random.randint(0, self.popSize-1)
@@ -461,7 +501,7 @@ class CFDNNetAdapt:
             with multiprocessing.Pool(bads) as p:
                 deltas = p.map(self.smpEvalFunc, self.toCompare)
     
-            # count non-evaluated cases
+            # count still non-evaluated cases
             bads = deltas.count(-1)
             deltas = [i for i in deltas if i >= 0]
             delta += sum(deltas)
@@ -469,86 +509,86 @@ class CFDNNetAdapt:
         return delta, bads
 
     def compareParetoFronts(self, netNondoms, smpNondoms):
+        # prepare list to save
         dists = list()
+
+        # loop over datapoints from samples nondominated solution
         for smpSol in smpNondoms:
             dist = 100
+            # loop over datapoints from net nondominated solutions
             for netSol in netNondoms:
                 potDist = np.linalg.norm(netSol[:self.nPars] - smpSol[:self.nPars])
+
+                # find the nearest datapoint
                 if potDist < dist:
                     dist = potDist
         
+            # rescale with respect to parameter space size
             dists.append(dist/math.sqrt(self.nPars))
 
         return dists
 
     def findNondominatedSolutions(self, floatData, directions):
+        # prepare problem
+        problem = plat.Problem(self.nPars, self.nObjs)
+        problem.types[:] = [plat.Real(self.pMin,self.pMax)]*self.nPars
+
+        # convert array to population for platypus
+        popData = list()
+        for solution in floatData:
+            individuum = plat.core.Solution(problem)
+            individuum.variables = [solution[i] for i in range(self.nPars)]
+            individuum.objectives = [solution[i] for i in range(self.nPars, len(solution))]
+            individuum.evaluated = True
+            popData.append(individuum)
+
+        # let platypus find non-dominated solutions
+        nondoms = plat.nondominated(popData)
+
+        # convert population to array
         nonDomSolutions = list()
-        checked = np.zeros((len(floatData),))
-
-        for p in range(len(floatData)):
-            point = floatData[p]
-            if p > 0:
-                dist = np.linalg.norm(point - floatData[p-1])
-                if dist < 0.1*self.tol:
-                    continue
-
-            dominated = False
-            for c in range(len(floatData)):
-                if checked[len(floatData)-1-c] == 1: # dominated solution
-                    continue
-
-                cPoint = np.flipud(floatData)[c]
-                aux = 0
-                for i in range(self.nObjs):
-                    if directions[i] > 0:
-                        if point[i+self.nPars] > cPoint[i+self.nPars]:
-                            aux += 1
-                    elif directions[i] < 0:
-                        if point[i+self.nPars] < cPoint[i+self.nPars]:
-                            aux += 1
-
-                if aux == self.nObjs:
-                    checked[p] = 1
-                    dominated = True
-                    break
-
-            if not dominated:
-                nonDomSolutions.append(point)
-
-        nonDomSolutions = sorted(nonDomSolutions, key = itemgetter(self.nPars + 0))
+        for solution in nondoms:
+            data = solution.variables[:] + solution.objectives[:]
+            nonDomSolutions.append(data)
         nonDomSolutions = np.array(nonDomSolutions)
 
         return nonDomSolutions
 
     def prepareForNextIter(self, bestNet, prevSamTotal, nSamTotal):
+        # lower variance
         self.rN -= self.dRN
         if self.rN < self.dRN:
             self.rN = self.dRN
     
+        # get number of samples to add
         if (self.iteration-1) >= len(self.deltaNSams):
             deltaNSam = self.deltaNSams[-1]
         else:
             deltaNSam = self.deltaNSams[self.iteration-1]
 
+        # save current number of samples and compute new
         prevSamTotal = nSamTotal
         self.nSam += deltaNSam
         nSamTotal = self.nSam/self.trainPro*100
 
+        # check if next iteration is last
         last = False
         if nSamTotal > self.maxSam:
             nSam = math.floor(self.maxSam*self.trainPro/100)
             last = True
     
+        # update mean number of neurons based on the best network found
         bestNs = bestNet.split("_")
         for i in range(self.nHidLay):
             self.nHid[i] = int(bestNs[i+1])
     
+        # update iteration counter
         self.iteration += 1
 
         return prevSamTotal, nSamTotal, last
 
     def loadAndScaleData(self, dataDir, dataNm, nPars, nObjs):
-        """ function to load samples and scale then in <0,1> """
+        """ function to load samples and scale them to be in <0,1> """
     
         # load samples
         with open(dataDir + dataNm,'r') as file:
@@ -575,6 +615,7 @@ class CFDNNetAdapt:
             for colInd in range(dataNum.shape[1]):
                 dataNum[rowInd, colInd] = (dataNum[rowInd, colInd]-colMins[colInd])/(colMaxs[colInd]-colMins[colInd])
     
+        # split and transpose
         source = dataNum[:, :nPars].T
         target = dataNum[:, nPars:nPars+nObjs].T
 
@@ -610,28 +651,32 @@ class CFDNNetAdapt:
     def prepOutDir(self, outDir, dirLstMk = []):
         """ function to prepare the output directory """
     
-        if not os.path.exists(outDir): # check if outDir exists
+        # prepare required directory if not already present
+        if not os.path.exists(outDir):
             os.makedirs(outDir)
     
+        # prepare optional subdirectories if not already present
         for dr in dirLstMk:
-            if not os.path.exists(outDir + dr): # if it does not already exist
+            if not os.path.exists(outDir + dr):
                 os.makedirs(outDir + dr)
 
     def plotRegressionGraph(self, netStructs, netNms, netDirs):
+        # loop over required net directories
         for netDir in netDirs:
             # read directory
             ls = os.listdir(netDir)
             ls = [i for i in ls if not ".png" in i]
 
-            # load and plot all net seeds
+            # loop over net seeds
             for seed in ls:
+                # load net seed
                 with open(netDir + seed, 'rb') as file:
                     [net] = pickle.load(file)
 
                 # test the network on validation data
                 out = np.array(prn.NNOut(self.sourceTe,net))
 
-                # transpose
+                # transpose data
                 targetTe = self.targetTe.T
                 out = out.T
 
