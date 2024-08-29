@@ -9,20 +9,12 @@ import math
 import numpy as np
 import dill as pickle
 import multiprocessing
-from CFDNNetAdaptV3 import *
+from testFunctions import *
+from CFDNNetAdaptV4 import *
 
 # bounds
 pMin = 0.0
 pMax = 1.0
-
-# optimized function
-def zdt6(x):
-    n = len(x)
-    f1 = 1 - math.exp(-4*x[0])*(math.sin(6*math.pi*x[0]))**6
-    g = 1 + 9*(sum(x[1:])/(n - 1))**0.25
-    f2 = g*(1 - (f1/g)**2)
-
-    return [f1, f2]
 
 # cost function evaluation 
 def smpEvaluation(i):
@@ -36,7 +28,7 @@ def smpEvaluation(i):
     for p in range(len(netPars)):
         netPars[p] = netPars[p]*(algorithm.smpMaxs[p] - algorithm.smpMins[p]) + algorithm.smpMins[p]
 
-    checkOut = zdt6(netPars)
+    checkOut = ZDT6(netPars)
 
     # rescale for ANN
     for co in range(len(checkOut)):
@@ -87,23 +79,23 @@ algorithm.dataNm = "10_platypusAllSolutions.dat"
 algorithm.minMax = ""
 
 # algorithm parameters
-algorithm.nSam = 1000
-algorithm.deltaNSams = [1000]
+algorithm.nSam = 4000
+algorithm.deltaNSams = [4000]
 algorithm.nNN = 1
 algorithm.minN = 2
 algorithm.maxN = 4
 algorithm.nHidLay = 3
 algorithm.tol = 1e-5
-algorithm.iMax = 200
+algorithm.iMax = 4
 algorithm.dRN = 1
-algorithm.nComps = 2
+algorithm.nComps = 1
 algorithm.nSeeds = 1
 
 # parameters for ANN training
 algorithm.trainPro = 75
 algorithm.valPro = 15
 algorithm.testPro = 10
-algorithm.kMax = 10
+algorithm.kMax = 5
 algorithm.rEStop = 1e-2
 algorithm.dnnVerbose = True
 
