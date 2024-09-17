@@ -13,6 +13,8 @@ pip-delete-this-directory.txt
 # Environments
 .env
 venv/
+.idea/
 
 # Project specific
-example/ZDT6/01_algoRuns/
+**/01_algoRuns/
+**/00_prepData/
