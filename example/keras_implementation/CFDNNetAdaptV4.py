@@ -13,7 +13,6 @@ from tensorflow.keras.callbacks import EarlyStopping
 import multiprocessing
 
 sys.path.insert(1, "../../thirdParty")
-import pyrennModV3 as prn
 import platypusModV2 as plat
 
 sys.path.insert(1, "../../src")
@@ -36,6 +35,7 @@ class CFDNNetAdapt:
         self.dRN = None  # factor to change variance of random number of neurons selection
         self.nComps = None  # number of verification checks
         self.nSeeds = None  # number of seeds
+        self.nets = None
 
         # DNN parameters
         self.minN = None  # minimal number of neurons
@@ -82,7 +82,7 @@ class CFDNNetAdapt:
         if self.specRunDir is None:
             ls = os.listdir(self.mainDir)
             ls = [i for i in ls if "run" in i]
-            self.runDir = self.mainDir + "run_%02d/" % (len(ls) + 1)
+            self.runDir = self.mainDir + f"run_{(len(ls) + 1):02d}/"
         else:
             self.runDir = self.mainDir + self.specRunDir
         self.prepOutDir(self.runDir)
@@ -161,7 +161,7 @@ class CFDNNetAdapt:
         # Stops the training in case the validation loss is getting higher and revert to the best weights before this
         early_stopping = EarlyStopping(monitor='val_loss', patience=self.nValFails, restore_best_weights=True)
         history = model.fit(sourceTr.T, targetTr.T, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
-                            verbose=self.dnnVerbose, callbacks=[early_stopping])
+                            verbose=self.dnnVerbose, callbacks=[early_stopping], batch_size=256)
         return history
 
     def dnnSeedEvaluation(self, args):
@@ -176,10 +176,9 @@ class CFDNNetAdapt:
         netDir = stepDir + netNm + "/"
         model.save(netDir + f'{netNm}_{seed:03d}.keras')
 
-        out = model.predict(sourceTe.T).T
-        cError = np.mean(np.abs(out - targetTe))
+        loss = model.evaluate(sourceTe.T, targetTe.T)
 
-        return cError
+        return loss
 
     def packDataForDNNTraining(self, netStructs):
         # pack arguments for parallel evaluation of dnnSeedEvaluation function
@@ -208,17 +207,23 @@ class CFDNNetAdapt:
         self.iteration = 1
 
         while epsilon > self.tol and self.iteration <= self.iMax:
-            stepDir = self.runDir + "step_%04d/" % self.iteration
+            stepDir = self.runDir + f"step_{self.iteration:04d}/"
             self.prepOutDir(stepDir)
+            # log
             self.outFile.write("Starting iteration " + str(self.iteration) + "\n")
 
+            # compute number of samples used
             nSamTotal, trainLen, valLen, testLen = self.prepareSamples()
+
+            # find pareto front from samples
             smpNondoms = self.getNondomSolutionsFromSamples(prevSamTotal, nSamTotal, smpNondoms)
+
             self.outFile.write(
                 "Using " + str(self.nSam) + " training samples, " + str(valLen) + " validation samples and " + str(
                     testLen) + " testSamples\n")
             self.outFile.flush()
 
+            # check the last best dnn
             if self.iteration > 1:
                 self.checkLastBestDNN(netNondoms, smpNondoms)
 
@@ -233,7 +238,7 @@ class CFDNNetAdapt:
             for i in range(self.nSeeds * len(netStructs)):
                 cError = self.dnnSeedEvaluation(arguments[i])
                 if cError is not None:
-                    print(cError)
+                    print(f"NN {i} loss: {cError:.4f}")
                 cErrors.append(cError)
 
             if self.toPlotReg:
@@ -358,19 +363,27 @@ class CFDNNetAdapt:
             self.finishLog()
             exit()
 
-    def dnnEvaluation(self, vars):
+    @staticmethod
+    def dnnEvaluation(vars):
         """ function to return the costs for optimization """
-        dummy = 1e6
 
-        # prepare neural network
         netIn = np.array(vars)
-        # netIn = np.expand_dims(netIn, axis=1)
-        netIn = netIn.reshape((-1, 2))
+        netIn = np.expand_dims(netIn, axis=0)
+        # netIn = netIn.reshape((-1, 2))
 
         costOut = list()
 
-        for i in range(len(self.nets)):
-            output = self.nets[i].predict(netIn)
+        mainDir = "01_algoRuns/"
+        runDir = os.path.join(mainDir, sorted(os.listdir(mainDir))[-1])
+        stepDir = os.path.join(runDir, sorted([d for d in os.listdir(runDir) if "step_" in d])[-1])
+        nets = []
+        for netDir in os.listdir(stepDir):
+            for file in os.listdir(os.path.join(stepDir, netDir)):
+                if file.endswith(".keras"):
+                    nets.append(load_model(os.path.join(stepDir, netDir, file)))
+
+        for i in range(len(nets)):
+            output = nets[i].predict(netIn)
             costOut.append(output.squeeze())
 
         costOut = np.array(costOut)
@@ -380,9 +393,6 @@ class CFDNNetAdapt:
 
     # cost function evaluation
     def smpEvaluation(self, i):
-        # evaluate the cases
-        checkOut = [0] * (self.nObjs)
-
         netPars = self.population[i].variables[:]
         netOuts = self.population[i].objectives[:]
 
@@ -462,7 +472,7 @@ class CFDNNetAdapt:
         problem.function = self.dnnEvaluation
 
         # run the optimization algorithm with archiving data
-        with plat.MapEvaluator() as evaluator:
+        with plat.MultiprocessingEvaluator(parallelNum) as evaluator:
             moea = plat.NSGAII(problem, population_size=self.popSize, offspring_size=self.offSize, evaluator=evaluator,
                                archive=plat.Archive())
             moea.run(self.nGens * self.popSize)
