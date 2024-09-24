@@ -69,6 +69,8 @@ class CFDNNetAdapt:
         # flags
         self.toPlotReg = False  # wheter to create regression plots, requires uncommenting matplotlib import
 
+        # internal variables
+
     def initialize(self):
         # prepare DNN specifics
         self.netTransfer = ["tanh"] * self.nHidLay  # transfer functions
@@ -133,7 +135,7 @@ class CFDNNetAdapt:
                 continue
 
             self.prepOutDir(netDir)
-            self.outFile.write("Created net " + str(netNm) + "\n")
+            self.writeToLog("Created net " + str(netNm) + "\n")
 
             netStructs.append(netStruct)
             netNms.append(netNm)
@@ -141,7 +143,8 @@ class CFDNNetAdapt:
 
         return netStructs, netNms, netDirs
 
-    def build_model(self, netStruct, activations):
+    @staticmethod
+    def build_model(netStruct, activations):
         model = Sequential()
 
         # First layer manages the input shape
@@ -210,7 +213,7 @@ class CFDNNetAdapt:
             stepDir = self.runDir + f"step_{self.iteration:04d}/"
             self.prepOutDir(stepDir)
             # log
-            self.outFile.write("Starting iteration " + str(self.iteration) + "\n")
+            self.writeToLog("Starting iteration " + str(self.iteration) + "\n")
 
             # compute number of samples used
             nSamTotal, trainLen, valLen, testLen = self.prepareSamples()
@@ -218,10 +221,7 @@ class CFDNNetAdapt:
             # find pareto front from samples
             smpNondoms = self.getNondomSolutionsFromSamples(prevSamTotal, nSamTotal, smpNondoms)
 
-            self.outFile.write(
-                "Using " + str(self.nSam) + " training samples, " + str(valLen) + " validation samples and " + str(
-                    testLen) + " testSamples\n")
-            self.outFile.flush()
+            self.writeToLog(f"Using {self.nSam} training samples, {valLen} validation samples and {testLen} testSamples\n")
 
             # check the last best dnn
             if self.iteration > 1:
@@ -232,24 +232,22 @@ class CFDNNetAdapt:
 
             parallelNum = self.nSeeds * len(netStructs)
 
-            # with multiprocessing.Pool(parallelNum) as p:
-            #     cErrors = p.map(self.dnnSeedEvaluation, arguments)
-            cErrors = []
-            for i in range(self.nSeeds * len(netStructs)):
-                cError = self.dnnSeedEvaluation(arguments[i])
-                if cError is not None:
-                    print(f"NN {i} loss: {cError:.4f}")
-                cErrors.append(cError)
+            with multiprocessing.Pool(parallelNum) as p:
+                cErrors = p.map(self.dnnSeedEvaluation, arguments)
+            # cErrors = []
+            # for i in range(self.nSeeds * len(netStructs)):
+            #     cError = self.dnnSeedEvaluation(arguments[i])
+            #     if cError is not None:
+            #         print(f"NN {i} loss: {cError:.4f}")
+            #     cErrors.append(cError)
 
             if self.toPlotReg:
                 self.plotRegressionGraph(netStructs, netNms, netDirs)
 
-            self.outFile.write("Iteration " + str(self.iteration) + " - Training finished \n")
-            self.outFile.flush()
+            self.writeToLog(f"Iteration {self.iteration} - Training finished\n")
 
             bestNet, netNondoms = self.optimizeAndFindBestDNN(netStructs, netNms, netDirs, smpNondoms)
-            self.outFile.write("Iteration " + str(self.iteration) + " - Best DNN found " + bestNet + "\n")
-            self.outFile.flush()
+            self.writeToLog(f"Iteration {self.iteration} - Best DNN found {bestNet}\n")
 
             delta, bads = self.runVerification(bestNet, stepDir)
 
@@ -264,24 +262,25 @@ class CFDNNetAdapt:
             else:
                 epsilon = delta / (self.nComps - bads)
 
-            self.outFile.write("Last residual - " + str(epsilon) + "\n\n")
-            self.outFile.flush()
+            self.writeToLog(f"Last residual - {epsilon}\n\n")
 
             if last:
-                self.outFile.write("Done. Maximum number of samples reached\n")
+                self.writeToLog("Done. Maximum number of samples reached\n")
                 self.finishLog()
                 exit()
 
             prevSamTotal, nSamTotal, last = self.prepareForNextIter(bestNet, prevSamTotal, nSamTotal)
 
-        self.outFile.write("Done. Required error reached\n")
+        self.writeToLog("Done. Required error reached\n")
         self.finishLog()
 
+    def writeToLog(self, text):
+        with open(self.runDir + "log.out", 'a') as outFile:
+            outFile.write(text)
+
     def startLog(self):
-        # open file and write header
-        self.outFile = open(self.runDir + "log.out", 'w')
-        self.outFile.write("\nstartTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
-        self.outFile.write("===================SET UP=====================\n")
+        self.writeToLog("\nstartTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
+        self.writeToLog("===================SET UP=====================\n")
 
         # prepare things to write
         toWrite = [
@@ -297,17 +296,16 @@ class CFDNNetAdapt:
 
         # write
         for thing in toWrite:
-            self.outFile.write(thing + " = " + str(eval("self." + thing)) + "\n")
+            self.writeToLog(f"{thing} = {eval('self.' + thing)}\n")
 
         # finish
-        self.outFile.write("\n")
-        self.outFile.flush()
+        self.writeToLog("\n")
+
 
     def finishLog(self):
         # write ending and close
-        self.outFile.write("==============================================\n")
-        self.outFile.write("endTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
-        self.outFile.close()
+        self.writeToLog("==============================================\n")
+        self.writeToLog(f"endTime = {datetime.datetime.now().strftime('%d/%m/%Y %X')}\n")
 
     def prepareSamples(self):
         # total number of samples used in iteration
@@ -354,12 +352,11 @@ class CFDNNetAdapt:
 
         # compute and write total error
         pError = sum(dists) / len(dists)
-        self.outFile.write("Error of best DNN from last iteration is " + str(pError) + "\n")
-        self.outFile.flush()
+        self.writeToLog(f"Error of best DNN from last iteration is {pError}\n")
 
         # end run if error small enough
         if pError < self.tol:
-            self.outFile.write("Done. Last best DNN error < " + str(self.tol) + "\n")
+            self.writeToLog(f"Done. Last best DNN error < {self.tol}\n")
             self.finishLog()
             exit()
 
@@ -412,14 +409,10 @@ class CFDNNetAdapt:
         delta += abs(netOuts[0] - checkOut[0])
         delta += abs(netOuts[1] - checkOut[1])
 
-        self.outFile.write(
-            "Doing CFD check no. " + str(self.toCompare.index(i)) + " with parameters " + str(netPars) + "\n")
-        self.outFile.write("no. " + str(self.toCompare.index(i)) + " ANN outs were " + str(netOuts) + "\n")
-        self.outFile.write(
-            "no. " + str(self.toCompare.index(i)) + " CFD outs were " + str(checkOut) + " delta " + str(
-                delta) + "\n")
-        self.outFile.write("CFD check no. " + str(self.toCompare.index(i)) + " done\n")
-        self.outFile.flush()
+        self.writeToLog(f"Doing CFD check no. {self.toCompare.index(i)} with parameters {netPars}\n")
+        self.writeToLog(f"no. {self.toCompare.index(i)} ANN outs were {netOuts}\n")
+        self.writeToLog(f"no. {self.toCompare.index(i)} CFD outs were {checkOut} delta {delta}\n")
+        self.writeToLog(f"CFD check no. {self.toCompare.index(i)} done\n")
 
         return delta
 
@@ -501,12 +494,12 @@ class CFDNNetAdapt:
             [self.population, nondoms, algorithm, problem] = pickle.load(file, encoding="latin1")
 
         # run verification
-        # with multiprocessing.Pool(self.nComps) as p:
-        #     deltas = p.map(self.smpEvaluation, self.toCompare)
-        deltas = []
-        for i in range(self.nComps):
-            delta = self.smpEvaluation(self.toCompare[i])
-            deltas.append(delta)
+        with multiprocessing.Pool(self.nComps) as p:
+            deltas = p.map(self.smpEvaluation, self.toCompare)
+        # deltas = []
+        # for i in range(self.nComps):
+        #     delta = self.smpEvaluation(self.toCompare[i])
+        #     deltas.append(delta)
 
         # count non-evaluated cases
         bads = deltas.count(-1)
@@ -525,12 +518,12 @@ class CFDNNetAdapt:
             self.toCompare = secToCompare[:]
 
             # run samples verification
-            # with multiprocessing.Pool(bads) as p:
-            #     deltas = p.map(self.smpEvaluation, self.toCompare)
-            deltas = []
-            for i in range(bads):
-                delta = self.smpEvaluation(self.toCompare[i])
-                deltas.append(delta)
+            with multiprocessing.Pool(bads) as p:
+                deltas = p.map(self.smpEvaluation, self.toCompare)
+            # deltas = []
+            # for i in range(bads):
+            #     delta = self.smpEvaluation(self.toCompare[i])
+            #     deltas.append(delta)
 
             # count still non-evaluated cases
             bads = deltas.count(-1)
