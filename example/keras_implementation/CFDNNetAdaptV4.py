@@ -70,6 +70,8 @@ class CFDNNetAdapt:
         self.toPlotReg = False  # wheter to create regression plots, requires uncommenting matplotlib import
 
         # internal variables
+        self.verbosityLevel = 0  # verbosity level for Keras
+
 
     def initialize(self):
         # prepare DNN specifics
@@ -78,6 +80,9 @@ class CFDNNetAdapt:
         self.nHid = [(self.maxN + self.minN) / 2 for _ in range(self.nHidLay)]  # mean number of neurons for each layer
         self.rN = (self.maxN - self.minN) / 2  # variance for random number of neurons selection
         self.rN *= 0.5
+
+        # calculate internal variables
+        self.verbosityLevel = 1 if self.dnnVerbose else 0
 
         # prepare directories
         self.prepOutDir(self.mainDir)
@@ -164,7 +169,7 @@ class CFDNNetAdapt:
         # Stops the training in case the validation loss is getting higher and revert to the best weights before this
         early_stopping = EarlyStopping(monitor='val_loss', patience=self.nValFails, restore_best_weights=True)
         history = model.fit(sourceTr.T, targetTr.T, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
-                            verbose=self.dnnVerbose, callbacks=[early_stopping], batch_size=256)
+                            verbose=self.verbosityLevel, callbacks=[early_stopping], batch_size=256)
         return history
 
     def dnnSeedEvaluation(self, args):
@@ -179,7 +184,7 @@ class CFDNNetAdapt:
         netDir = stepDir + netNm + "/"
         model.save(netDir + f'{netNm}_{seed:03d}.keras')
 
-        loss = model.evaluate(sourceTe.T, targetTe.T)
+        loss = model.evaluate(sourceTe.T, targetTe.T, verbose=self.verbosityLevel)
 
         return loss
 
@@ -380,8 +385,9 @@ class CFDNNetAdapt:
                     nets.append(load_model(os.path.join(stepDir, netDir, file)))
 
         for i in range(len(nets)):
-            output = nets[i].predict(netIn)
-            costOut.append(output.squeeze())
+            model = nets[i]
+            output = model(netIn, training=False)
+            costOut.append(np.reshape(output, (2,)))
 
         costOut = np.array(costOut)
         costOut = costOut.mean(axis=0)
@@ -451,7 +457,7 @@ class CFDNNetAdapt:
     def runDNNOptimization(self, netStruct, netNm, netDir, parallelNum):
         # list net save directory
         ls = os.listdir(netDir)
-        ls = [i for i in ls if not ".png" in i]
+        ls = [i for i in ls if ".png" not in i]
 
         # load all net seeds
         self.nets = list()
@@ -485,7 +491,7 @@ class CFDNNetAdapt:
         self.toCompare = list()
         while len(self.toCompare) < self.nComps:
             toAdd = random.randint(0, self.popSize - 1)
-            if not toAdd in self.toCompare:
+            if toAdd not in self.toCompare:
                 self.toCompare.append(toAdd)
 
         # load optimization data
@@ -512,7 +518,7 @@ class CFDNNetAdapt:
             secToCompare = list()
             while len(secToCompare) < bads:
                 toAdd = random.randint(0, self.popSize - 1)
-                if not toAdd in self.toCompare and not toAdd in secToCompare:
+                if toAdd not in self.toCompare and toAdd not in secToCompare:
                     secToCompare.append(toAdd)
 
             self.toCompare = secToCompare[:]
