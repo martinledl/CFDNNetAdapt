@@ -89,7 +89,10 @@ class CFDNNetAdapt:
         if self.specRunDir is None:
             ls = os.listdir(self.mainDir)
             ls = [i for i in ls if "run" in i]
-            self.runDir = self.mainDir + f"run_{(len(ls) + 1):02d}/"
+            i = 1
+            while f"run_{(len(ls) + i):02d}" in ls:
+                i += 1
+            self.runDir = self.mainDir + f"run_{(len(ls) + i):02d}/"
         else:
             self.runDir = self.mainDir + self.specRunDir
         self.prepOutDir(self.runDir)
@@ -256,7 +259,9 @@ class CFDNNetAdapt:
             netStructs, netNms, netDirs = self.createRandomDNNs(stepDir)
             arguments = self.packDataForDNNTraining(netStructs)
 
-            parallelNum = self.nSeeds * len(netStructs)
+            parallelNum1 = self.nSeeds * len(netStructs)
+            parallelNum2 = self.get_available_cpu_cores()
+            parallelNum = min(parallelNum1, parallelNum2)
 
             with multiprocessing.Pool(parallelNum) as p:
                 cErrors = p.map(self.dnnSeedEvaluation, arguments)
@@ -464,7 +469,8 @@ class CFDNNetAdapt:
             netDir = netDirs[n]
 
             # run optimization
-            parallelNum = self.nSeeds * self.nNN
+            # parallelNum = self.nSeeds * self.nNN
+            parallelNum = self.get_available_cpu_cores()
             moea, nondoms = self.runDNNOptimization(netStruct, netNm, netDir, parallelNum)
 
             # convert nondominated solutions to array
@@ -529,7 +535,8 @@ class CFDNNetAdapt:
             [self.population, nondoms, algorithm, problem] = pickle.load(file, encoding="latin1")
 
         # run verification
-        with multiprocessing.Pool(self.nComps) as p:
+        parallelNum = min(self.nComps, self.get_available_cpu_cores())
+        with multiprocessing.Pool(parallelNum) as p:
             deltas = p.map(self.smpEvaluation, self.toCompare)
         # deltas = []
         # for i in range(self.nComps):
