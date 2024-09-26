@@ -1,4 +1,5 @@
 import os
+import sys
 import math
 import random
 import datetime
@@ -10,8 +11,13 @@ from tensorflow.keras.layers import Dense, InputLayer
 from tensorflow.keras.optimizers import Adam, SGD, AdamW
 from tensorflow.keras.callbacks import EarlyStopping
 import multiprocessing
-import thirdParty.platypusModV2 as plat
-from src.testFunctions import ZDT6
+# import thirdParty.platypusModV2 as plat
+# from src.testFunctions import ZDT6
+sys.path.insert(1, "../../thirdParty")
+import platypusModV2 as plat
+
+sys.path.insert(1, "../../src")
+from testFunctions import ZDT6
 
 
 class CFDNNetAdapt:
