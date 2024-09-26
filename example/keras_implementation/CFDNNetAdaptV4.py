@@ -107,6 +107,7 @@ class CFDNNetAdapt:
         self.maxSam = np.shape(self.source)[1]  # maximum number of samples
 
     def createNN(self, stepDir):
+        self.writeToLog("Creating a new NN\n")
         newCheck = True
         skip = False
         netTry = 1
@@ -197,7 +198,10 @@ class CFDNNetAdapt:
         netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, nValFails, verbose, runDir, iteration, seed = args
 
         model = self.build_model(netStruct, netTransfer)
+        self.writeToLog(f"Starting training DNN with seed {seed}\n")
         history = self.train_model(model, sourceTr, targetTr, sourceVl, targetVl)
+        self.writeToLog(f"Training of DNN with seed {seed} finished\n")
+
         if self.drawTrainingPlot:
             self.plotTrainingGraph(history, runDir, iteration, seed)
 
@@ -207,6 +211,7 @@ class CFDNNetAdapt:
         model.save(netDir + f'{netNm}_{seed:03d}.keras')
 
         loss = model.evaluate(sourceTe.T, targetTe.T, verbose=self.verbosityLevel)
+        self.writeToLog(f"Loss of DNN with seed {seed} is {loss}\n")
 
         return loss
 
@@ -265,12 +270,6 @@ class CFDNNetAdapt:
 
             with multiprocessing.Pool(parallelNum) as p:
                 cErrors = p.map(self.dnnSeedEvaluation, arguments)
-            # cErrors = []
-            # for i in range(self.nSeeds * len(netStructs)):
-            #     cError = self.dnnSeedEvaluation(arguments[i])
-            #     if cError is not None:
-            #         print(f"NN {i} loss: {cError:.4f}")
-            #     cErrors.append(cError)
 
             if self.toPlotReg:
                 self.plotRegressionGraph(netStructs, netNms, netDirs)
@@ -312,13 +311,17 @@ class CFDNNetAdapt:
     def writeToLog(self, text):
         timestampString = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         with open(self.runDir + "log.out", 'a') as outFile:
+            while len(text) > 1 and text[0] == "\n":
+                outFile.write("\n")
+                text = text[1:]
+
             outFile.write(f"[{timestampString}]: {text}")
 
     def startLog(self):
         self.writeToLog("startTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
         self.writeToLog("===================SET UP=====================\n")
 
-        self.writeToLog(f"Available CPU cores: {self.get_available_cpu_cores()}\n\n")
+        self.writeToLog(f"\nAvailable CPU cores: {self.get_available_cpu_cores()}\n\n")
 
         # prepare things to write
         toWrite = [
@@ -536,6 +539,7 @@ class CFDNNetAdapt:
             [self.population, nondoms, algorithm, problem] = pickle.load(file, encoding="latin1")
 
         # run verification
+        self.writeToLog(f"Starting verification with {bestNet}\n")
         parallelNum = self.get_available_cpu_cores()
         with multiprocessing.Pool(parallelNum) as p:
             deltas = p.map(self.smpEvaluation, self.toCompare)
@@ -549,6 +553,8 @@ class CFDNNetAdapt:
         deltas = [i for i in deltas if i >= 0]
         delta = sum(deltas)
 
+        self.writeToLog(f"Verification of {bestNet} finished, non-evaluated cases: {bads}\n")
+
         # choose substitute solutions for non-evaluated ones
         if bads > 0:
             # choose random datapoints
@@ -561,17 +567,16 @@ class CFDNNetAdapt:
             self.toCompare = secToCompare[:]
 
             # run samples verification
+            self.writeToLog(f"Starting verification with {bestNet} for substitute solutions\n")
             with multiprocessing.Pool(parallelNum) as p:
                 deltas = p.map(self.smpEvaluation, self.toCompare)
-            # deltas = []
-            # for i in range(bads):
-            #     delta = self.smpEvaluation(self.toCompare[i])
-            #     deltas.append(delta)
 
             # count still non-evaluated cases
             bads = deltas.count(-1)
             deltas = [i for i in deltas if i >= 0]
             delta += sum(deltas)
+
+            self.writeToLog(f"Verification of {bestNet} for substitute solutions finished, still non-evaluated cases: {bads}\n")
 
         return delta, bads
 
