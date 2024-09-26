@@ -1,5 +1,4 @@
 import os
-import sys
 import math
 import random
 import datetime
@@ -8,15 +7,11 @@ import dill as pickle
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, InputLayer
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, SGD, AdamW
 from tensorflow.keras.callbacks import EarlyStopping
 import multiprocessing
-
-sys.path.insert(1, "../../thirdParty")
-import platypusModV2 as plat
-
-sys.path.insert(1, "../../src")
-from testFunctions import ZDT6
+import thirdParty.platypusModV2 as plat
+from src.testFunctions import ZDT6
 
 
 class CFDNNetAdapt:
@@ -36,6 +31,7 @@ class CFDNNetAdapt:
         self.nComps = None  # number of verification checks
         self.nSeeds = None  # number of seeds
         self.nets = None
+        self.nValFails = None  # number of allowed validation fails before ending the training
 
         # DNN parameters
         self.minN = None  # minimal number of neurons
@@ -47,6 +43,7 @@ class CFDNNetAdapt:
         self.kMax = None  # maximum number of iterations for dnn training
         self.rEStop = None  # required error for dnn validation
         self.dnnVerbose = False  # print info about dnn training
+        self.drawTrainingPlot = False  # draw training plot
 
         # MOEA parameters
         self.pMin = None  # minimal allowed parameter value
@@ -62,21 +59,17 @@ class CFDNNetAdapt:
         self.dataNm = None  # name of the file with data
         self.specRunDir = None  # specified run directory, optional
 
-        # evaluation functions
-        # self.dnnEvalFunc = None  # custom function for dnn evaluation in optimization
-        # self.smpEvalFunc = None  # custom function for sample evaluation in verification
-
         # flags
         self.toPlotReg = False  # wheter to create regression plots, requires uncommenting matplotlib import
 
         # internal variables
         self.verbosityLevel = 0  # verbosity level for Keras
 
-
     def initialize(self):
         # prepare DNN specifics
         self.netTransfer = ["tanh"] * self.nHidLay  # transfer functions
-        self.nValFails = self.nHidLay * 10  # allowed number of failed validations
+        # self.nValFails = self.nHidLay * 10  # allowed number of failed validations
+        self.nValFails = self.nValFails if self.nValFails is not None else self.kMax
         self.nHid = [(self.maxN + self.minN) / 2 for _ in range(self.nHidLay)]  # mean number of neurons for each layer
         self.rN = (self.maxN - self.minN) / 2  # variance for random number of neurons selection
         self.rN *= 0.5
@@ -107,20 +100,30 @@ class CFDNNetAdapt:
         skip = False
         netTry = 1
 
+        # try to create new random architecture
         while newCheck:
-            nMins = [max(int(self.nHid[i] - self.rN), self.minN) for i in range(self.nHidLay)]
-            nMaxs = [min(int(self.nHid[i] + self.rN), self.maxN) for i in range(self.nHidLay)]
+            # compute allowed minimum and maximum
+            nMins = list()
+            nMaxs = list()
+            for i in range(self.nHidLay):
+                nMins.append(max(int(self.nHid[i] - self.rN), self.minN))
+                nMaxs.append(min(int(self.nHid[i] + self.rN), self.maxN))
 
+            # generate random number of neurons
             netStruct = [self.nPars]
             for i in range(self.nHidLay):
                 netStruct += [random.randint(nMins[i], nMaxs[i])]
             netStruct += [self.nOuts]
 
+            # create network name and save directory
             netNm = "_".join([str(i) for i in netStruct])
             netDir = stepDir + netNm + "/"
 
+            # check for already existing networks
             if not os.path.exists(netDir):
                 newCheck = False
+
+            # ned if tried too many times
             elif netTry >= self.nNN:
                 newCheck = False
                 skip = True
@@ -134,14 +137,20 @@ class CFDNNetAdapt:
         netNms = []
         netDirs = []
 
+        # create DNNs
         for _ in range(self.nNN):
+            # create one architecture
             netStruct, netNm, netDir, skip = self.createNN(stepDir)
+
+            # skip if duplicate
             if skip:
                 continue
 
+            # create network save directory
             self.prepOutDir(netDir)
             self.writeToLog("Created net " + str(netNm) + "\n")
 
+            # save
             netStructs.append(netStruct)
             netNms.append(netNm)
             netDirs.append(netDir)
@@ -177,7 +186,9 @@ class CFDNNetAdapt:
         netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, nValFails, dnnVerbose, runDir, iteration, seed = args
 
         model = self.build_model(netStruct, netTransfer)
-        self.train_model(model, sourceTr, targetTr, sourceVl, targetVl)
+        history = self.train_model(model, sourceTr, targetTr, sourceVl, targetVl)
+        if self.drawTrainingPlot:
+            self.plotTrainingGraph(history, runDir, iteration, seed)
 
         stepDir = runDir + f"step_{iteration:04d}/"
         netNm = "_".join([str(i) for i in netStruct])
@@ -224,7 +235,7 @@ class CFDNNetAdapt:
             nSamTotal, trainLen, valLen, testLen = self.prepareSamples()
 
             # find pareto front from samples
-            smpNondoms = self.getNondomSolutionsFromSamples(prevSamTotal, nSamTotal, smpNondoms)
+            smpNondoms = self.getNondomSolutionsFromSamples(nSamTotal, smpNondoms)
 
             self.writeToLog(f"Using {self.nSam} training samples, {valLen} validation samples and {testLen} testSamples\n")
 
@@ -337,7 +348,7 @@ class CFDNNetAdapt:
 
         return nSamTotal, trainLen, valLen, testLen
 
-    def getNondomSolutionsFromSamples(self, prevSamTotal, nSamTotal, smpNondoms=None):
+    def getNondomSolutionsFromSamples(self, nSamTotal, smpNondoms=None):
         # get samples added in this iteration
         aSource = self.souall[:, :nSamTotal]
         aTarget = self.tarall[:, :nSamTotal]
@@ -617,7 +628,8 @@ class CFDNNetAdapt:
 
         return prevSamTotal, nSamTotal, last
 
-    def loadAndScaleData(self, dataDir, dataNm, nPars, nObjs):
+    @staticmethod
+    def loadAndScaleData(dataDir, dataNm, nPars, nObjs):
         """ function to load samples and scale them to be in <0,1> """
 
         # load samples
@@ -652,7 +664,8 @@ class CFDNNetAdapt:
 
         return source, target
 
-    def getScalesFromFile(self, dataDir, dataNm):
+    @staticmethod
+    def getScalesFromFile(dataDir, dataNm):
         """ function to get scales from the given file """
 
         # load samples
@@ -679,7 +692,8 @@ class CFDNNetAdapt:
 
         return colMins, colMaxs
 
-    def prepOutDir(self, outDir, dirLstMk=[]):
+    @staticmethod
+    def prepOutDir(outDir, dirLstMk=[]):
         """ function to prepare the output directory """
 
         # prepare required directory if not already present
@@ -696,7 +710,7 @@ class CFDNNetAdapt:
         for netDir in netDirs:
             # read directory
             ls = os.listdir(netDir)
-            ls = [i for i in ls if not ".png" in i]
+            ls = [i for i in ls if ".png" not in i]
 
             # loop over net seeds
             for seed in ls:
@@ -722,3 +736,16 @@ class CFDNNetAdapt:
                 num = seed.split("_")[-1].split(".")[0]
                 plt.savefig(netDir + "regressionPlot_" + num + ".png")
                 plt.close()
+
+    @staticmethod
+    def plotTrainingGraph(history, runDir, iteration, seed):
+        # plot training history
+        plt.plot(history.history['loss'], label='train')
+        plt.plot(history.history['val_loss'], label='validation')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.yscale('log')
+        plt.legend()
+        plt.title(f"Training history iteration {iteration}, seed {seed}")
+        plt.savefig(runDir + f"trainingPlot_{iteration:04d}.png")
+        plt.close()

@@ -35,6 +35,8 @@ if __name__ == "__main__":
     algorithm.kMax = 10000
     algorithm.rEStop = 1e-5
     algorithm.dnnVerbose = True
+    algorithm.nValFails = 150
+    algorithm.drawTrainingPlot = True
 
     # parameters for MOP
     algorithm.pMin = 0.0

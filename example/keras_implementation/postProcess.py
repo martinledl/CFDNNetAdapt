@@ -7,12 +7,10 @@ import dill as pickle
 from matplotlib import cm
 import matplotlib.pyplot as plt
 from CFDNNetAdaptV4 import CFDNNetAdapt
-
-sys.path.insert(1, "../../src")
-from testFunctions import *
+from src.testFunctions import optSolsZDT6, ZDT6
 
 # parameters
-runDir = "01_algoRuns/run_03/"
+runDir = "01_algoRuns/run_11/"
 xName = "f1"
 yName = "f2"
 logName = "log.out"
