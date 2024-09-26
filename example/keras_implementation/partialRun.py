@@ -34,7 +34,8 @@ if __name__ == "__main__":
     algorithm.testPro = 10
     algorithm.kMax = 10000
     algorithm.rEStop = 1e-5
-    algorithm.dnnVerbose = True
+    algorithm.activationFunction = "relu"
+    algorithm.verbose = True
     algorithm.nValFails = 150
     algorithm.drawTrainingPlot = True
 

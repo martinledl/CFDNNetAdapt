@@ -48,8 +48,9 @@ class CFDNNetAdapt:
         self.testPro = None  # percentage of samples used for testing
         self.kMax = None  # maximum number of iterations for dnn training
         self.rEStop = None  # required error for dnn validation
-        self.dnnVerbose = False  # print info about dnn training
+        self.verbose = False  # print info about dnn training
         self.drawTrainingPlot = False  # draw training plot
+        self.activationFunction = "tanh"  # activation function for hidden layers
 
         # MOEA parameters
         self.pMin = None  # minimal allowed parameter value
@@ -73,7 +74,7 @@ class CFDNNetAdapt:
 
     def initialize(self):
         # prepare DNN specifics
-        self.netTransfer = ["tanh"] * self.nHidLay  # transfer functions
+        self.netTransfer = [self.activationFunction] * self.nHidLay  # transfer functions
         # self.nValFails = self.nHidLay * 10  # allowed number of failed validations
         self.nValFails = self.nValFails if self.nValFails is not None else self.kMax
         self.nHid = [(self.maxN + self.minN) / 2 for _ in range(self.nHidLay)]  # mean number of neurons for each layer
@@ -81,7 +82,7 @@ class CFDNNetAdapt:
         self.rN *= 0.5
 
         # calculate internal variables
-        self.verbosityLevel = 1 if self.dnnVerbose else 0
+        self.verbosityLevel = 1 if self.verbose else 0
 
         # prepare directories
         self.prepOutDir(self.mainDir)
@@ -189,7 +190,7 @@ class CFDNNetAdapt:
 
     def dnnSeedEvaluation(self, args):
         # unpack arguments
-        netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, nValFails, dnnVerbose, runDir, iteration, seed = args
+        netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, nValFails, verbose, runDir, iteration, seed = args
 
         model = self.build_model(netStruct, netTransfer)
         history = self.train_model(model, sourceTr, targetTr, sourceVl, targetVl)
@@ -211,12 +212,12 @@ class CFDNNetAdapt:
         for n in range(len(netStructs)):
             for i in range(self.nSeeds):
                 argument = ([netStructs[n],  # network architectures
-                             ["tanh"] * self.nHidLay,  # transfer functions
+                             [self.activationFunction] * self.nHidLay,  # transfer functions
                              self.sourceTr, self.targetTr,  # training samples
                              self.sourceVl, self.targetVl,  # validatioin samples
                              self.sourceTe, self.targetTe,  # testing samples
                              self.kMax, self.rEStop,  # maximum number of iterations and required training error
-                             self.nValFails, self.dnnVerbose,  # number of allowed validation failes and verbose flag
+                             self.nValFails, self.verbose,  # number of allowed validation failes and verbose flag
                              self.runDir, self.iteration,  # save directory and iteration counter
                              i])  # parallel counter
                 arguments.append(argument)
@@ -225,6 +226,9 @@ class CFDNNetAdapt:
 
     def run(self):
         self.startLog()
+        if self.verbose:
+            print(f"\nAvailable CPU cores: {self.get_available_cpu_cores()}\n")
+
         last = False
         epsilon = 1
         prevSamTotal = 0
@@ -296,13 +300,19 @@ class CFDNNetAdapt:
         self.writeToLog("Done. Required error reached\n")
         self.finishLog()
 
+    @staticmethod
+    def get_available_cpu_cores():
+        return multiprocessing.cpu_count()
+
     def writeToLog(self, text):
         with open(self.runDir + "log.out", 'a') as outFile:
             outFile.write(text)
 
     def startLog(self):
-        self.writeToLog("\nstartTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
+        self.writeToLog("startTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
         self.writeToLog("===================SET UP=====================\n")
+
+        self.writeToLog(f"\nAvailable CPU cores: {self.get_available_cpu_cores()}\n\n")
 
         # prepare things to write
         toWrite = [
@@ -314,7 +324,9 @@ class CFDNNetAdapt:
             "trainPro", "valPro", "testPro",
             "kMax", "rEStop", "nValFails",
             "pMin", "pMax",
-            "offSize", "popSize", "nGens"]
+            "offSize", "popSize", "nGens",
+            "activationFunction"
+        ]
 
         # write
         for thing in toWrite:

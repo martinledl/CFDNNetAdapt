@@ -83,7 +83,7 @@ if __name__ == "__main__":
     algorithm.testPro = 10
     algorithm.kMax = 5
     algorithm.rEStop = 1e-2
-    algorithm.dnnVerbose = True
+    algorithm.verbose = True
 
     # parameters for MOP
     algorithm.pMin = 0.0
