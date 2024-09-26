@@ -10,7 +10,7 @@ from CFDNNetAdaptV4 import CFDNNetAdapt
 from src.testFunctions import optSolsZDT6, ZDT6
 
 # parameters
-runDir = "01_algoRuns/run_11/"
+runDir = "01_algoRuns/run_13/"
 xName = "f1"
 yName = "f2"
 logName = "log.out"

@@ -88,11 +88,12 @@ class CFDNNetAdapt:
         self.prepOutDir(self.mainDir)
         if self.specRunDir is None:
             ls = os.listdir(self.mainDir)
-            ls = [i for i in ls if "run" in i]
-            i = 1
-            while f"run_{(len(ls) + i):02d}" in ls:
-                i += 1
-            self.runDir = self.mainDir + f"run_{(len(ls) + i):02d}/"
+            ls = sorted([i for i in ls if "run" in i])
+            try:
+                lastRunNum = int(ls[-1].split("_")[-1])
+                self.runDir = self.mainDir + f"run_{lastRunNum + 1}/"
+            except:
+                self.runDir = self.mainDir + f"run_{(len(ls) + 1):02d}/"
         else:
             self.runDir = self.mainDir + self.specRunDir
         self.prepOutDir(self.runDir)
@@ -259,9 +260,8 @@ class CFDNNetAdapt:
             netStructs, netNms, netDirs = self.createRandomDNNs(stepDir)
             arguments = self.packDataForDNNTraining(netStructs)
 
-            parallelNum1 = self.nSeeds * len(netStructs)
-            parallelNum2 = self.get_available_cpu_cores()
-            parallelNum = min(parallelNum1, parallelNum2)
+            # parallelNum = self.nSeeds * len(netStructs)
+            parallelNum = self.get_available_cpu_cores()
 
             with multiprocessing.Pool(parallelNum) as p:
                 cErrors = p.map(self.dnnSeedEvaluation, arguments)
@@ -310,14 +310,15 @@ class CFDNNetAdapt:
         return multiprocessing.cpu_count()
 
     def writeToLog(self, text):
+        timestampString = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         with open(self.runDir + "log.out", 'a') as outFile:
-            outFile.write(text)
+            outFile.write(f"[{timestampString}]: {text}")
 
     def startLog(self):
         self.writeToLog("startTime = " + str(datetime.datetime.now().strftime("%d/%m/%Y %X")) + "\n")
         self.writeToLog("===================SET UP=====================\n")
 
-        self.writeToLog(f"\nAvailable CPU cores: {self.get_available_cpu_cores()}\n\n")
+        self.writeToLog(f"Available CPU cores: {self.get_available_cpu_cores()}\n\n")
 
         # prepare things to write
         toWrite = [
@@ -535,7 +536,7 @@ class CFDNNetAdapt:
             [self.population, nondoms, algorithm, problem] = pickle.load(file, encoding="latin1")
 
         # run verification
-        parallelNum = min(self.nComps, self.get_available_cpu_cores())
+        parallelNum = self.get_available_cpu_cores()
         with multiprocessing.Pool(parallelNum) as p:
             deltas = p.map(self.smpEvaluation, self.toCompare)
         # deltas = []
@@ -560,7 +561,7 @@ class CFDNNetAdapt:
             self.toCompare = secToCompare[:]
 
             # run samples verification
-            with multiprocessing.Pool(bads) as p:
+            with multiprocessing.Pool(parallelNum) as p:
                 deltas = p.map(self.smpEvaluation, self.toCompare)
             # deltas = []
             # for i in range(bads):
