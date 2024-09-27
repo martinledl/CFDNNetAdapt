@@ -91,7 +91,7 @@ class CFDNNetAdapt:
             ls = sorted([i for i in ls if "run" in i])
             try:
                 lastRunNum = int(ls[-1].split("_")[-1])
-                self.runDir = self.mainDir + f"run_{lastRunNum + 1}/"
+                self.runDir = self.mainDir + f"run_{(lastRunNum + 1):02d}/"
             except:
                 self.runDir = self.mainDir + f"run_{(len(ls) + 1):02d}/"
         else:
@@ -260,6 +260,7 @@ class CFDNNetAdapt:
 
             # check the last best dnn
             if self.iteration > 1:
+                self.writeToLog(f"Checking last best DNN from iteration {self.iteration - 1}\n")
                 self.checkLastBestDNN(netNondoms, smpNondoms)
 
             netStructs, netNms, netDirs = self.createRandomDNNs(stepDir)
@@ -417,10 +418,13 @@ class CFDNNetAdapt:
         runDir = os.path.join(mainDir, sorted(os.listdir(mainDir))[-1])
         stepDir = os.path.join(runDir, sorted([d for d in os.listdir(runDir) if "step_" in d])[-1])
         nets = []
+
         for netDir in os.listdir(stepDir):
             for file in os.listdir(os.path.join(stepDir, netDir)):
                 if file.endswith(".keras"):
                     nets.append(load_model(os.path.join(stepDir, netDir, file)))
+
+        assert len(nets) > 0, "No neural networks found during dnnEvaluation"
 
         for i in range(len(nets)):
             model = nets[i]
@@ -510,6 +514,7 @@ class CFDNNetAdapt:
         problem.function = self.dnnEvaluation
 
         # run the optimization algorithm with archiving data
+        self.writeToLog(f"Starting NSGAII optimization with net {netNm}\n")
         with plat.MultiprocessingEvaluator(parallelNum) as evaluator:
             moea = plat.NSGAII(problem, population_size=self.popSize, offspring_size=self.offSize, evaluator=evaluator,
                                archive=plat.Archive())
