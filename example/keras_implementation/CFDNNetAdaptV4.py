@@ -6,7 +6,6 @@ import datetime
 import numpy as np
 import dill as pickle
 import matplotlib.pyplot as plt
-import tensorflow as tf
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, InputLayer
 from tensorflow.keras.optimizers import Adam, SGD, AdamW
@@ -39,7 +38,6 @@ class CFDNNetAdapt:
         self.nSeeds = None  # number of seeds
         self.nets = None
         self.nValFails = None  # number of allowed validation fails before ending the training
-        self.batchSize = 256  # batch size for training
 
         # DNN parameters
         self.minN = None  # minimal number of neurons
@@ -173,36 +171,26 @@ class CFDNNetAdapt:
 
     @staticmethod
     def build_model(netStruct, activations):
-        mirrored_strategy = tf.distribute.MirroredStrategy(
-            cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
+        model = Sequential()
 
-        with mirrored_strategy.scope():
-            model = Sequential()
+        # First layer manages the input shape
+        model.add(InputLayer(shape=(netStruct[0],)))
 
-            # First layer manages the input shape
-            model.add(InputLayer(shape=(netStruct[0],)))
+        # Add hidden layers
+        for (neurons, activation) in zip(netStruct[1:-1], activations):
+            model.add(Dense(neurons, activation=activation))
 
-            # Add hidden layers
-            for (neurons, activation) in zip(netStruct[1:-1], activations):
-                model.add(Dense(neurons, activation=activation))
+        # Add output layer
+        model.add(Dense(netStruct[-1], activation='linear'))
 
-            # Add output layer
-            model.add(Dense(netStruct[-1], activation='linear'))
-
-            model.compile(optimizer=Adam(), loss='mean_squared_error')
-
+        model.compile(optimizer=Adam(), loss='mean_squared_error')
         return model
 
     def train_model(self, model, sourceTr, targetTr, sourceVl, targetVl):
         # Stops the training in case the validation loss is getting higher and revert to the best weights before this
         early_stopping = EarlyStopping(monitor='val_loss', patience=self.nValFails, restore_best_weights=True)
-        dataset = tf.data.Dataset.from_tensor_slices((sourceTr.T, targetTr.T)).batch(self.batchSize)
-
-        mirrored_strategy = tf.distribute.MirroredStrategy(
-            cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
-        distributed_dataset = mirrored_strategy.experimental_distribute_dataset(dataset)
-        history = model.fit(distributed_dataset, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
-                            verbose=self.verbosityLevel, callbacks=[early_stopping])
+        history = model.fit(sourceTr.T, targetTr.T, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
+                            verbose=self.verbosityLevel, callbacks=[early_stopping], batch_size=256)
         return history
 
     def dnnSeedEvaluation(self, args):
