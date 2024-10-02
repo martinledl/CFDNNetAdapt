@@ -32,11 +32,12 @@ if __name__ == "__main__":
     algorithm.trainPro = 75
     algorithm.valPro = 15
     algorithm.testPro = 10
-    algorithm.kMax = 10000
+    algorithm.kMax = 100
     algorithm.rEStop = 1e-5
     algorithm.activationFunction = "tanh"
     algorithm.verbose = True
     algorithm.nValFails = 150
+    algorithm.batchSize = 256
     algorithm.drawTrainingPlot = True
 
     # parameters for MOP
