@@ -27,7 +27,8 @@ class CFDNNetAdapt:
                  dataNm="10_platypusAllSolutions.dat", minMax="", nSam=2000, deltaNSams=None, nNN=1, minN=8, maxN=32,
                  nHidLay=3, tol=1e-5, iMax=3, dRN=1, nComps=16, nSeeds=1, trainPro=75, valPro=15, testPro=10,
                  kMax=10000, nValFails=150, activationFunction="tanh", rEStop=1e-5, verbose=True, pMin=0.0, pMax=1.0,
-                 offSize=100, popSize=100, nGens=250, drawTrainingPlot=False, toPlotReg=False, specRunDir=None):
+                 offSize=100, popSize=100, nGens=250, drawTrainingPlot=False, toPlotReg=False, specRunDir=None,
+                 saveTrainingHistory=False):
 
         # replace mutable default argument
         if deltaNSams is None:
@@ -70,6 +71,7 @@ class CFDNNetAdapt:
         self.rEStop = rEStop  # required error for DNN validation
         self.verbose = verbose  # print info about DNN training
         self.drawTrainingPlot = drawTrainingPlot  # draw training plot
+        self.saveTrainingHistory = saveTrainingHistory  # save training history
         self.activationFunction = activationFunction  # activation function for hidden layers
 
         # MOEA parameters
@@ -234,6 +236,14 @@ class CFDNNetAdapt:
 
         if self.drawTrainingPlot:
             self.plotTrainingGraph(history, netDir, iteration, seed)
+
+        if self.saveTrainingHistory:
+            with open(netDir + "training_history.pkl", 'wb') as file:
+                pickle.dump(
+                    history,
+                    file,
+                    protocol=2
+                )
 
         loss = model.evaluate(sourceVl.T, targetVl.T, verbose=self._verbosityLevel)
         self.writeToLog(f"Loss of DNN with seed {seed} is {loss}\n")
