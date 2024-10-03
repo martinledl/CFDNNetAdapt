@@ -6,6 +6,7 @@ import datetime
 import numpy as np
 import dill as pickle
 import matplotlib.pyplot as plt
+import tensorflow as tf
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, InputLayer
 from tensorflow.keras.optimizers import Adam, SGD, AdamW
@@ -210,7 +211,7 @@ class CFDNNetAdapt:
         netDir = stepDir + netNm + "/"
         model.save(netDir + f'{netNm}_{seed:03d}.keras')
 
-        loss = model.evaluate(sourceTe.T, targetTe.T, verbose=self.verbosityLevel)
+        loss = model.evaluate(sourceVl.T, targetVl.T, verbose=self.verbosityLevel)
         self.writeToLog(f"Loss of DNN with seed {seed} is {loss}\n")
 
         return loss
@@ -301,6 +302,9 @@ class CFDNNetAdapt:
                 exit()
 
             prevSamTotal, nSamTotal, last = self.prepareForNextIter(bestNet, prevSamTotal, nSamTotal)
+
+            # free memory used by keras
+            tf.keras.backend.clear_session()
 
         self.writeToLog("Done. Required error reached\n")
         self.finishLog()
