@@ -111,6 +111,9 @@ class CFDNNetAdapt:
             self._runDir = self.mainDir + self.specRunDir
         self.prepOutDir(self._runDir)
 
+        if self.verbose:
+            print(f"Run directory created: {self._runDir}")
+
         # ------------------ prepare data ------------------
         # prepare mins and maxs for scaling
         self._smpMins, self._smpMaxs = self.getScalesFromFile(self.smpDir + self.prbDir, self.dataNm)
