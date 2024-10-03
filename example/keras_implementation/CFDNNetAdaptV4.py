@@ -224,13 +224,13 @@ class CFDNNetAdapt:
         history = self.train_model(model, sourceTr, targetTr, sourceVl, targetVl)
         self.writeToLog(f"Training of DNN with seed {seed} finished\n")
 
-        if self.drawTrainingPlot:
-            self.plotTrainingGraph(history, runDir, iteration, seed)
-
         stepDir = runDir + f"step_{iteration:04d}/"
         netNm = "_".join([str(i) for i in netStruct])
         netDir = stepDir + netNm + "/"
         model.save(netDir + f'{netNm}_{seed:03d}.keras')
+
+        if self.drawTrainingPlot:
+            self.plotTrainingGraph(history, netDir, iteration, seed)
 
         loss = model.evaluate(sourceVl.T, targetVl.T, verbose=self._verbosityLevel)
         self.writeToLog(f"Loss of DNN with seed {seed} is {loss}\n")
@@ -426,8 +426,7 @@ class CFDNNetAdapt:
             self.finishLog()
             exit()
 
-    @staticmethod
-    def dnnEvaluation(args):
+    def dnnEvaluation(self, args):
         """ function to return the costs for optimization """
 
         netIn = np.array(args)
@@ -435,18 +434,7 @@ class CFDNNetAdapt:
         # netIn = netIn.reshape((-1, 2))
 
         costOut = list()
-
-        mainDir = "01_algoRuns/"
-        runDir = os.path.join(mainDir, sorted(os.listdir(mainDir))[-1])
-        stepDir = os.path.join(runDir, sorted([d for d in os.listdir(runDir) if "step_" in d])[-1])
-        nets = []
-
-        for netDir in os.listdir(stepDir):
-            for file in os.listdir(os.path.join(stepDir, netDir)):
-                if file.endswith(".keras"):
-                    nets.append(load_model(os.path.join(stepDir, netDir, file)))
-
-        assert len(nets) > 0, "No neural networks found during dnnEvaluation"
+        nets = self._nets
 
         for i in range(len(nets)):
             model = nets[i]
@@ -797,7 +785,7 @@ class CFDNNetAdapt:
                 plt.close()
 
     @staticmethod
-    def plotTrainingGraph(history, runDir, iteration, seed):
+    def plotTrainingGraph(history, outDir, iteration, seed):
         # plot training history
         plt.plot(history.history['loss'], label='train')
         plt.plot(history.history['val_loss'], label='validation')
@@ -806,5 +794,5 @@ class CFDNNetAdapt:
         plt.yscale('log')
         plt.legend()
         plt.title(f"Training history iteration {iteration}, seed {seed}")
-        plt.savefig(runDir + f"trainingPlot_{iteration:04d}.png")
+        plt.savefig(outDir + f"trainingPlot_{iteration:04d}.png")
         plt.close()

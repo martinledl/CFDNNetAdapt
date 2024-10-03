@@ -13,7 +13,7 @@ from testFunctions import *
 from CFDNNetAdaptV3 import *
 
 # parameters
-runDir = "01_algoRuns/run_16/"
+runDir = "01_algoRuns/run_21/"
 xName = "f1"
 yName = "f2"
 logName = "log.out"
