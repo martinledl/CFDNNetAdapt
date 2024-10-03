@@ -238,9 +238,9 @@ class CFDNNetAdapt:
             self.plotTrainingGraph(history, netDir, iteration, seed)
 
         if self.saveTrainingHistory:
-            with open(netDir + "training_history.pkl", 'wb') as file:
+            with open(netDir + f"training_history-{seed:03d}.pkl", 'wb') as file:
                 pickle.dump(
-                    history,
+                    history.history,
                     file,
                     protocol=2
                 )
@@ -523,7 +523,7 @@ class CFDNNetAdapt:
     def runDNNOptimization(self, netStruct, netNm, netDir, parallelNum):
         # list net save directory
         ls = os.listdir(netDir)
-        ls = [i for i in ls if ".png" not in i]
+        ls = [i for i in ls if ".keras" in i]
 
         # load all net seeds
         self._nets = list()
@@ -770,7 +770,7 @@ class CFDNNetAdapt:
         for netDir in netDirs:
             # read directory
             ls = os.listdir(netDir)
-            ls = [i for i in ls if ".png" not in i]
+            ls = [i for i in ls if ".keras" in i]
 
             # loop over net seeds
             for seed in ls:
@@ -807,5 +807,5 @@ class CFDNNetAdapt:
         plt.yscale('log')
         plt.legend()
         plt.title(f"Training history iteration {iteration}, seed {seed}")
-        plt.savefig(outDir + f"trainingPlot_{iteration:04d}.png")
+        plt.savefig(outDir + f"trainingPlot_{seed:03d}.png")
         plt.close()
