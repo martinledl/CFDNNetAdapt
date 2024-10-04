@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, InputLayer
-from tensorflow.keras.optimizers import Adam, SGD, AdamW
+from tensorflow.keras.optimizers.legacy import Adam, SGD
 from tensorflow.keras.callbacks import EarlyStopping
 import multiprocessing
 
@@ -17,6 +17,7 @@ import multiprocessing
 # from src.testFunctions import ZDT6
 sys.path.insert(1, "../../thirdParty")
 import platypusModV2 as plat
+import levenberg_marquardt as lm
 
 sys.path.insert(1, "../../src")
 from testFunctions import ZDT6
@@ -25,10 +26,11 @@ from testFunctions import ZDT6
 class CFDNNetAdapt:
     def __init__(self, nPars=2, nObjs=2, nOuts=2, mainDir="01_algoRuns/", smpDir="00_prepData/", prbDir="ZDT6/",
                  dataNm="10_platypusAllSolutions.dat", minMax="", nSam=2000, deltaNSams=None, nNN=1, minN=8, maxN=32,
-                 nHidLay=3, tol=1e-5, iMax=3, dRN=1, nComps=16, nSeeds=1, trainPro=75, valPro=15, testPro=10,
-                 kMax=10000, nValFails=150, activationFunction="tanh", rEStop=1e-5, verbose=True, pMin=0.0, pMax=1.0,
-                 offSize=100, popSize=100, nGens=250, drawTrainingPlot=False, toPlotReg=False, specRunDir=None,
-                 saveTrainingHistory=False):
+                 nHidLay=3, tol=1e-5, iMax=3, dRN=1, nComps=16, nSeeds=1, trainPro=70, valPro=20, testPro=10,
+                 kMax=10000, nValFails=100, validationFreq=1, activationFunction="tanh", lm_optimizer=False,
+                 rEStop=1e-5, verbose=True, pMin=0.0, pMax=1.0, offSize=100, popSize=100, nGens=250,
+                 drawTrainingPlot=False, toPlotReg=False, specRunDir=None, saveTrainingHistory=False,
+                 doNotCreateRunDir=False):
 
         # replace mutable default argument
         if deltaNSams is None:
@@ -48,6 +50,7 @@ class CFDNNetAdapt:
         self.prbDir = prbDir  # specific data directory
         self.dataNm = dataNm  # name of the file with data
         self.minMax = minMax  # min-max scaling
+        self.doNotCreateRunDir = doNotCreateRunDir  # whether to create run directory
 
         # CFDNNetAdapt hyperparameters
         self.nSam = nSam  # initial number of samples
@@ -62,6 +65,8 @@ class CFDNNetAdapt:
         self.nComps = nComps  # number of verification checks
         self.nSeeds = nSeeds  # number of seeds
         self.nValFails = nValFails  # number of allowed validation fails before ending the training
+        self.validationFreq = validationFreq  # frequency of validation checks (every n-th epoch)
+        self.lm_optimizer = lm_optimizer  # whether to use Levenberg-Marquardt optimizer
 
         # DNN parameters
         self.trainPro = trainPro  # percentage of samples used for training
@@ -111,7 +116,9 @@ class CFDNNetAdapt:
                 self._runDir = self.mainDir + f"run_{(len(ls) + 1):02d}/"
         else:
             self._runDir = self.mainDir + self.specRunDir
-        self.prepOutDir(self._runDir)
+
+        if not self.doNotCreateRunDir:
+            self.prepOutDir(self._runDir)
 
         if self.verbose:
             print(f"Run directory created: {self._runDir}")
@@ -196,12 +203,11 @@ class CFDNNetAdapt:
 
         return netStructs, netNms, netDirs
 
-    @staticmethod
-    def build_model(netStruct, activations):
+    def build_model(self, netStruct, activations):
         model = Sequential()
 
         # First layer manages the input shape
-        model.add(InputLayer(shape=(netStruct[0],)))
+        model.add(InputLayer(input_shape=(netStruct[0],)))
 
         # Add hidden layers
         for (neurons, activation) in zip(netStruct[1:-1], activations):
@@ -210,14 +216,23 @@ class CFDNNetAdapt:
         # Add output layer
         model.add(Dense(netStruct[-1], activation='linear'))
 
-        model.compile(optimizer=Adam(), loss='mean_squared_error')
-        return model
+        if self.lm_optimizer:
+            model_wrapper = lm.ModelWrapper(model)
+            model_wrapper.compile(
+                optimizer=SGD(learning_rate=1.0),
+                loss=lm.MeanSquaredError())
+            return model_wrapper
+        else:
+            model.compile(optimizer=Adam(), loss='mean_squared_error')
+            return model
 
     def train_model(self, model, sourceTr, targetTr, sourceVl, targetVl):
         # Stops the training in case the validation loss is getting higher and revert to the best weights before this
-        early_stopping = EarlyStopping(monitor='val_loss', patience=self.nValFails, restore_best_weights=True)
+        early_stopping = EarlyStopping(monitor='val_loss' if not self.lm_optimizer else 'loss',
+                                       patience=self.nValFails / self.validationFreq, restore_best_weights=True)
         history = model.fit(sourceTr.T, targetTr.T, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
-                            verbose=self._verbosityLevel, callbacks=[early_stopping], batch_size=256)
+                            verbose=self._verbosityLevel, callbacks=[early_stopping], batch_size=256,
+                            validation_freq=self.validationFreq)
         return history
 
     def dnnSeedEvaluation(self, args):
@@ -371,7 +386,7 @@ class CFDNNetAdapt:
             "kMax", "rEStop", "nValFails",
             "pMin", "pMax",
             "offSize", "popSize", "nGens",
-            "activationFunction"
+            "activationFunction", "_runDir"
         ]
 
         # write
@@ -451,6 +466,13 @@ class CFDNNetAdapt:
 
         for i in range(len(nets)):
             model = nets[i]
+
+            if self.lm_optimizer:
+                model = lm.ModelWrapper(model)
+                model.compile(
+                    optimizer=SGD(learning_rate=1.0),
+                    loss=lm.MeanSquaredError())
+
             output = model(netIn, training=False)
             costOut.append(np.reshape(output, (2,)))
 
@@ -775,6 +797,13 @@ class CFDNNetAdapt:
             # loop over net seeds
             for seed in ls:
                 model = load_model(os.path.join(netDir, seed))
+
+                if self.lm_optimizer:
+                    model = lm.ModelWrapper(model)
+                    model.compile(
+                        optimizer=SGD(learning_rate=1.0),
+                        loss=lm.MeanSquaredError())
+
                 out = model.predict(self._sourceTe.T).T
 
                 # transpose data
@@ -797,11 +826,16 @@ class CFDNNetAdapt:
                 plt.savefig(netDir + "regressionPlot_" + num + ".png")
                 plt.close()
 
-    @staticmethod
-    def plotTrainingGraph(history, outDir, iteration, seed):
+    def plotTrainingGraph(self, history, outDir, iteration, seed):
         # plot training history
-        plt.plot(history.history['loss'], label='train')
-        plt.plot(history.history['val_loss'], label='validation')
+        train_history = history.history['loss']
+        val_history = history.history['val_loss']
+        time1 = np.arange(0, len(train_history))
+        time2 = np.arange(0, len(val_history) * self.validationFreq, self.validationFreq)
+
+        plt.plot(time1, train_history, label='train')
+        plt.plot(time2, val_history, label='validation')
+
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.yscale('log')

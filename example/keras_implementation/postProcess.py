@@ -10,10 +10,10 @@ import matplotlib.pyplot as plt
 sys.path.insert(1, "../../src")
 sys.path.insert(1, "../../thirdParty")
 from testFunctions import *
-from CFDNNetAdaptV3 import *
+from CFDNNetAdaptV3 import CFDNNetAdapt
 
 # parameters
-runDir = "01_algoRuns/run_21/"
+runDir = "01_algoRuns/run_34/"
 xName = "f1"
 yName = "f2"
 logName = "log.out"
