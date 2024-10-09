@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import dill as pickle
+import numpy as np
 
 
 class History:
@@ -8,10 +9,17 @@ class History:
         self.title = title
 
 
-def compare_training_runs(histories):
+def moving_average(data, window_size):
+    return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+
+
+def compare_training_runs(histories, smooth=False):
     # Plot the data
     for history in histories:
-        plt.plot(history.loss['val_loss'], label=history.title)
+        if smooth:
+            plt.plot(moving_average(history.loss['loss'], 10), label=history.title)
+        else:
+            plt.plot(history.loss['loss'], label=history.title)
 
     plt.title('validation loss')
     plt.ylabel('loss')
@@ -42,6 +50,6 @@ if __name__ == "__main__":
         #    history4 = History(pickle.load(f), "linear")
 
         #compare_training_runs([history1, history2, history3, history4])
-        compare_training_runs(histories)
+        compare_training_runs(histories, smooth=True)
         plt.savefig(f'training_comparison.png')
         plt.close()
