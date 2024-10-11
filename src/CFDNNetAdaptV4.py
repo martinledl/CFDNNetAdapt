@@ -3,34 +3,35 @@ import sys
 import math
 import random
 import datetime
+from itertools import repeat
+
 import numpy as np
 import dill as pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from tensorflow.keras.models import Sequential, save_model, load_model
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense, InputLayer
 from tensorflow.keras.optimizers.legacy import Adam, SGD
 from tensorflow.keras.callbacks import EarlyStopping
 import multiprocessing
 
-# import thirdParty.platypusModV2 as plat
-# from src.testFunctions import ZDT6
-sys.path.insert(1, "../../thirdParty")
 import platypusModV2 as plat
 import levenberg_marquardt as lm
 
-sys.path.insert(1, "../../src")
-from testFunctions import ZDT6
+
+# ------------------ Known issues ------------------
+# dnnEvaluation and smpEvaluation functions need to be defined in a different file and imported before passing them
+# as a parameter.
 
 
 class CFDNNetAdapt:
-    def __init__(self, nPars=2, nObjs=2, nOuts=2, mainDir="01_algoRuns/", smpDir="00_prepData/", prbDir="ZDT6/",
-                 dataNm="10_platypusAllSolutions.dat", minMax="", nSam=2000, deltaNSams=None, nNN=1, minN=8, maxN=32,
-                 nHidLay=3, tol=1e-5, iMax=3, dRN=1, nComps=16, nSeeds=1, trainPro=70, valPro=20, testPro=10,
-                 kMax=10000, nValFails=100, validationFreq=1, activationFunction="tanh", lm_optimizer=False,
-                 rEStop=1e-5, verbose=True, pMin=0.0, pMax=1.0, offSize=100, popSize=100, nGens=250,
-                 drawTrainingPlot=False, toPlotReg=False, specRunDir=None, saveTrainingHistory=False,
-                 doNotCreateRunDir=False):
+    def __init__(self, dnnEvaluation=None, smpEvaluation=None, nPars=2, nObjs=2, nOuts=2, mainDir="01_algoRuns/",
+                 smpDir=r"00_prepData/", prbDir="ZDT6/", dataNm="10_platypusAllSolutions.dat", minMax="", nSam=2000,
+                 deltaNSams=None, nNN=1, minN=8, maxN=32, nHidLay=3, tol=1e-5, iMax=3, dRN=1, nComps=16, nSeeds=1,
+                 trainPro=70, valPro=20, testPro=10, kMax=10000, nValFails=100, validationFreq=1,
+                 activationFunction="tanh", lm_optimizer=False, rEStop=1e-5, verbose=True, pMin=0.0, pMax=1.0,
+                 offSize=100, popSize=100, nGens=250, drawTrainingPlot=False, toPlotReg=False, specRunDir=None,
+                 saveTrainingHistory=False, doNotCreateRunDir=False):
 
         # replace mutable default argument
         if deltaNSams is None:
@@ -78,6 +79,8 @@ class CFDNNetAdapt:
         self.drawTrainingPlot = drawTrainingPlot  # draw training plot
         self.saveTrainingHistory = saveTrainingHistory  # save training history
         self.activationFunction = activationFunction  # activation function for hidden layers
+        self.dnnEvaluation = dnnEvaluation
+        self.smpEvaluation = smpEvaluation
 
         # MOEA parameters
         self.pMin = pMin  # minimal allowed parameter value
@@ -88,7 +91,6 @@ class CFDNNetAdapt:
 
         # flags
         self.toPlotReg = toPlotReg  # whether to create regression plots, requires uncommenting matplotlib import
-
 
         # ------------------ internal variables ------------------
         self._verbosityLevel = 1 if self.verbose else 0  # verbosity level for Keras
@@ -102,7 +104,6 @@ class CFDNNetAdapt:
         self._iteration = 1
 
         self._toCompare = None
-
 
         # ------------------ prepare directories ------------------
         self.prepOutDir(self.mainDir)
@@ -119,17 +120,18 @@ class CFDNNetAdapt:
 
         if not self.doNotCreateRunDir:
             self.prepOutDir(self._runDir)
-
-        if self.verbose:
-            print(f"Run directory created: {self._runDir}")
+            if self.verbose:
+                print(f"Run directory created: {self._runDir}")
 
         # ------------------ prepare data ------------------
         # prepare mins and maxs for scaling
         self._smpMins, self._smpMaxs = self.getScalesFromFile(self.smpDir + self.prbDir, self.dataNm)
 
         # prepare samples
-        self._source, self._target = self.loadAndScaleData(self.smpDir + self.prbDir, self.dataNm, self.nPars, self.nOuts)
-        self._souall, self._tarall = self.loadAndScaleData(self.smpDir + self.prbDir, self.dataNm, self.nPars, self.nObjs)
+        self._source, self._target = self.loadAndScaleData(self.smpDir + self.prbDir, self.dataNm, self.nPars,
+                                                           self.nOuts)
+        self._souall, self._tarall = self.loadAndScaleData(self.smpDir + self.prbDir, self.dataNm, self.nPars,
+                                                           self.nObjs)
         self._maxSam = np.shape(self._source)[1]  # maximum number of samples
 
         self._sourceTr = None
@@ -138,7 +140,6 @@ class CFDNNetAdapt:
         self._targetVl = None
         self._sourceTe = None
         self._targetTe = None
-
 
     def createNN(self, stepDir):
         self.writeToLog("Creating a new NN\n")
@@ -454,61 +455,6 @@ class CFDNNetAdapt:
             self.finishLog()
             exit()
 
-    def dnnEvaluation(self, args):
-        """ function to return the costs for optimization """
-
-        netIn = np.array(args)
-        netIn = np.expand_dims(netIn, axis=0)
-        # netIn = netIn.reshape((-1, 2))
-
-        costOut = list()
-        nets = self._nets
-
-        for i in range(len(nets)):
-            model = nets[i]
-
-            if self.lm_optimizer:
-                model = lm.ModelWrapper(model)
-                model.compile(
-                    optimizer=SGD(learning_rate=1.0),
-                    loss=lm.MeanSquaredError())
-
-            output = model(netIn, training=False)
-            costOut.append(np.reshape(output, (2,)))
-
-        costOut = np.array(costOut)
-        costOut = costOut.mean(axis=0)
-
-        return costOut
-
-    # cost function evaluation
-    def smpEvaluation(self, i):
-        netPars = self.population[i].variables[:]
-        netOuts = self.population[i].objectives[:]
-
-        # rescale the pars
-        for p in range(len(netPars)):
-            netPars[p] = netPars[p] * (self._smpMaxs[p] - self._smpMins[p]) + self._smpMins[p]
-
-        checkOut = ZDT6(netPars)
-
-        # rescale for ANN
-        for co in range(len(checkOut)):
-            checkOut[co] = (checkOut[co] - self._smpMins[self.nPars + co]) / (
-                    self._smpMaxs[self.nPars + co] - self._smpMins[self.nPars + co])
-
-        # compute the error
-        delta = 0
-        delta += abs(netOuts[0] - checkOut[0])
-        delta += abs(netOuts[1] - checkOut[1])
-
-        self.writeToLog(f"Doing CFD check no. {self._toCompare.index(i)} with parameters {netPars}\n")
-        self.writeToLog(f"no. {self._toCompare.index(i)} ANN outs were {netOuts}\n")
-        self.writeToLog(f"no. {self._toCompare.index(i)} CFD outs were {checkOut} delta {delta}\n")
-        self.writeToLog(f"CFD check no. {self._toCompare.index(i)} done\n")
-
-        return delta
-
     def optimizeAndFindBestDNN(self, netStructs, netNms, netDirs, smpNondoms):
         # prepare
         lError = 1e3
@@ -557,6 +503,9 @@ class CFDNNetAdapt:
         problem = plat.Problem(self.nPars, self.nObjs)
         problem.types[:] = [plat.Real(self.pMin, self.pMax)] * self.nPars
         problem.function = self.dnnEvaluation
+        problem.kwargs = {"nets": self._nets, "lm_optimizer": self.lm_optimizer, "smpMins": self._smpMins,
+                          "smpMaxs": self._smpMaxs, "nObjs": self.nObjs, "nOuts": self.nOuts, "smpDir": self.smpDir,
+                          "prbDir": self.prbDir, "minMax": self.minMax}
 
         # run the optimization algorithm with archiving data
         self.writeToLog(f"Starting NSGAII optimization with net {netNm}\n")
@@ -592,7 +541,7 @@ class CFDNNetAdapt:
         self.writeToLog(f"Starting verification with {bestNet}\n")
         parallelNum = self.get_available_cpu_cores()
         with multiprocessing.Pool(parallelNum) as p:
-            deltas = p.map(self.smpEvaluation, self._toCompare)
+            deltas = p.map(self.smpEvaluation, [(self.population, i, self._smpMins, self._smpMaxs, self.nPars) for i in self._toCompare])
 
         # count non-evaluated cases
         bads = deltas.count(-1)
@@ -615,7 +564,7 @@ class CFDNNetAdapt:
             # run samples verification
             self.writeToLog(f"Starting verification with {bestNet} for substitute solutions\n")
             with multiprocessing.Pool(parallelNum) as p:
-                deltas = p.map(self.smpEvaluation, self._toCompare)
+                deltas = p.map(self.smpEvaluation, [(self.population, i, self._smpMaxs, self._smpMins, self.nPars) for i in self._toCompare])
 
             # count still non-evaluated cases
             bads = deltas.count(-1)

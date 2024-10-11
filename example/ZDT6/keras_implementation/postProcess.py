@@ -7,30 +7,21 @@ import dill as pickle
 from matplotlib import cm
 import matplotlib.pyplot as plt
 
-sys.path.insert(1, "../../src")
-sys.path.insert(1, "../../thirdParty")
+sys.path.insert(1, "../../../src")
+sys.path.insert(1, "../../../thirdParty")
 from testFunctions import *
-from CFDNNetAdaptV3 import CFDNNetAdapt
+from CFDNNetAdaptV4 import CFDNNetAdapt
 
 # parameters
-runDir = "01_algoRuns/run_34/"
+runDir = "01_algoRuns/run_66/"
 xName = "f1"
 yName = "f2"
 logName = "log.out"
 parName = "optimOut.plat"
 
 # prepare CFDNNetAdapt
-algorithm = CFDNNetAdapt()
-
-# problem specification
-algorithm.nPars = 2
-algorithm.nObjs = 2
-algorithm.nOuts = 2
-algorithm.mainDir = "01_algoRuns/"
-algorithm.smpDir = "00_prepData/"
-algorithm.prbDir = "ZDT6/"
-algorithm.dataNm = "10_platypusAllSolutions.dat"
-algorithm.minMax = ""
+algorithm = CFDNNetAdapt(nPars=2, nObjs=2, nOuts=2, mainDir=runDir, smpDir="../00_prepData/", prbDir="ZDT6/",
+                         doNotCreateRunDir=True)
 
 # prepare plot
 fig = plt.figure(figsize=(16, 9))

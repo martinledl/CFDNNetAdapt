@@ -149,6 +149,7 @@ class Problem(object):
         self.directions = FixedLengthArray(nobjs, self.MINIMIZE)
         self.constraints = FixedLengthArray(nconstrs, "==0", _convert_constraint)
         self.nfe = nfe
+        self.kwargs = {}
         
     def __call__(self, solution):
         """Evaluate the solution.
@@ -164,14 +165,14 @@ class Problem(object):
         problem = solution.problem
         solution.variables[:] = [problem.types[i].decode(solution.variables[i]) for i in range(problem.nvars)]
         
-        self.evaluate(solution)
+        self.evaluate(solution, **self.kwargs)
         
         solution.variables[:] = [problem.types[i].encode(solution.variables[i]) for i in range(problem.nvars)]
         solution.constraint_violation = sum([abs(f(x)) for (f, x) in zip(solution.problem.constraints, solution.constraints)])
         solution.feasible = solution.constraint_violation == 0.0
         solution.evaluated = True
         
-    def evaluate(self, solution):
+    def evaluate(self, solution, **kwargs):
         """Evaluates the problem.
         
         By default, this method calls the function passed to the constructor.
@@ -188,9 +189,9 @@ class Problem(object):
             raise PlatypusError("function not defined")
         
         if self.nconstrs > 0:
-            (objs, constrs) = self.function(solution.variables)
+            (objs, constrs) = self.function(solution.variables, **kwargs)
         else:
-            objs = self.function(solution.variables)
+            objs = self.function(solution.variables, **kwargs)
             constrs = []
 
         if not hasattr(objs, "__getitem__"):
@@ -1013,8 +1014,9 @@ def unique(solutions, objectives=True):
             id = tuple(solution.objectives[:])
         else:
             id = tuple([problem.types[i].decode(solution.variables[i]) for i in range(problem.nvars)])
-        
-        if not id in unique_ids:
+
+        # CHANGED BY MARTIN LEDL from "if not id in unique_ids:"
+        if id not in unique_ids:
             unique_ids.add(id)
             result.append(solution)
             
