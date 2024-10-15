@@ -4,6 +4,7 @@ sys.path.insert(1, "../../../src")
 sys.path.insert(1, "../../../thirdParty")
 from CFDNNetAdaptV4 import CFDNNetAdapt
 import evalFunctions as evalF
+from postProcess import postProcess
 
 
 if __name__ == "__main__":
@@ -11,7 +12,7 @@ if __name__ == "__main__":
     algorithm = CFDNNetAdapt(
         dnnEvaluation=evalF.dnnEvaluation2,
         smpEvaluation=evalF.smpEvaluation2,
-        lm_optimizer=True,
+        lm_optimizer=False,
         activationFunction="silu",
         nPars=14,
         nObjs=2,
@@ -24,17 +25,17 @@ if __name__ == "__main__":
         nSam=2000,
         deltaNSams=[2000],
         nNN=1,
-        minN=5,
-        maxN=20,
+        minN=14,
+        maxN=32,
         nHidLay=3,
         tol=5e-2,
-        iMax=4,
+        iMax=3,
         dRN=0,
         nComps=0,  # smpEvaluation not used
         nSeeds=1,
-        trainPro=75,
-        valPro=15,
-        testPro=10,
+        trainPro=70,
+        valPro=30,
+        testPro=0,
         kMax=10000,
         rEStop=1e-5,
         verbose=True,
@@ -42,10 +43,18 @@ if __name__ == "__main__":
         pMax=1.0,
         offSize=500,
         popSize=500,
-        nGens=30,
+        nGens=60,
         drawTrainingPlot=True,
         saveTrainingHistory=True,
-        nValFails=15,
+        patience=200,
+        validationFreq=1,
+        dropout=0.15,
+        batchNorm=False,
+        netStructs=[[14, 128, 64, 1]],
     )
 
     algorithm.run()
+
+    runDir = algorithm.getRunDir()
+    postProcess(runDir=runDir, xName="energyEfficiency", yName="totalLength")
+    print("Post processing done.")

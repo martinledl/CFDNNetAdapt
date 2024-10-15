@@ -4,13 +4,13 @@ import math
 import random
 import datetime
 from itertools import repeat
-
+from sklearn.model_selection import train_test_split
 import numpy as np
 import dill as pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Dense, InputLayer
+from tensorflow.keras.layers import Dense, InputLayer, Dropout, BatchNormalization
 from tensorflow.keras.optimizers.legacy import Adam, SGD
 from tensorflow.keras.callbacks import EarlyStopping
 import multiprocessing
@@ -28,10 +28,11 @@ class CFDNNetAdapt:
     def __init__(self, dnnEvaluation=None, smpEvaluation=None, nPars=2, nObjs=2, nOuts=2, mainDir="01_algoRuns/",
                  smpDir=r"00_prepData/", prbDir="ZDT6/", dataNm="10_platypusAllSolutions.dat", minMax="", nSam=2000,
                  deltaNSams=None, nNN=1, minN=8, maxN=32, nHidLay=3, tol=1e-5, iMax=3, dRN=1, nComps=16, nSeeds=1,
-                 trainPro=70, valPro=20, testPro=10, kMax=10000, nValFails=100, validationFreq=1,
+                 trainPro=70, valPro=20, testPro=10, kMax=10000, patience=100, validationFreq=1,
                  activationFunction="tanh", lm_optimizer=False, rEStop=1e-5, verbose=True, pMin=0.0, pMax=1.0,
                  offSize=100, popSize=100, nGens=250, drawTrainingPlot=False, toPlotReg=False, specRunDir=None,
-                 saveTrainingHistory=False, doNotCreateRunDir=False):
+                 saveTrainingHistory=False, doNotCreateRunDir=False, randomState=42, dropout=0.0, batchNorm=False,
+                 netStructs=None, batch_size=512):
 
         # replace mutable default argument
         if deltaNSams is None:
@@ -65,9 +66,11 @@ class CFDNNetAdapt:
         self.dRN = dRN  # factor to change variance of random number of neurons selection
         self.nComps = nComps  # number of verification checks
         self.nSeeds = nSeeds  # number of seeds
-        self.nValFails = nValFails  # number of allowed validation fails before ending the training
+        self.patience = patience  # number of allowed validation fails before ending the training
         self.validationFreq = validationFreq  # frequency of validation checks (every n-th epoch)
         self.lm_optimizer = lm_optimizer  # whether to use Levenberg-Marquardt optimizer
+        self.netStructs = netStructs  # list of neural network architectures (if supplied will not generate random ones)
+        self.batch_size = batch_size
 
         # DNN parameters
         self.trainPro = trainPro  # percentage of samples used for training
@@ -75,9 +78,8 @@ class CFDNNetAdapt:
         self.testPro = testPro  # percentage of samples used for testing
         self.kMax = kMax  # maximum number of iterations for DNN training
         self.rEStop = rEStop  # required error for DNN validation
-        self.verbose = verbose  # print info about DNN training
-        self.drawTrainingPlot = drawTrainingPlot  # draw training plot
-        self.saveTrainingHistory = saveTrainingHistory  # save training history
+        self.batchNorm = batchNorm  # whether to use batch normalization
+        self.dropout = dropout  # dropout rate
         self.activationFunction = activationFunction  # activation function for hidden layers
         self.dnnEvaluation = dnnEvaluation
         self.smpEvaluation = smpEvaluation
@@ -89,8 +91,12 @@ class CFDNNetAdapt:
         self.popSize = popSize  # population size
         self.nGens = nGens  # number of generations
 
-        # flags
+        # options
         self.toPlotReg = toPlotReg  # whether to create regression plots, requires uncommenting matplotlib import
+        self.randomState = randomState
+        self.verbose = verbose  # print info about DNN training
+        self.drawTrainingPlot = drawTrainingPlot  # draw training plot
+        self.saveTrainingHistory = saveTrainingHistory  # save training history
 
         # ------------------ internal variables ------------------
         self._verbosityLevel = 1 if self.verbose else 0  # verbosity level for Keras
@@ -213,6 +219,11 @@ class CFDNNetAdapt:
         # Add hidden layers
         for (neurons, activation) in zip(netStruct[1:-1], activations):
             model.add(Dense(neurons, activation=activation))
+            if self.dropout > 0:
+                model.add(Dropout(self.dropout))
+
+            if self.batchNorm:
+                model.add(BatchNormalization())
 
         # Add output layer
         model.add(Dense(netStruct[-1], activation='linear'))
@@ -230,15 +241,16 @@ class CFDNNetAdapt:
     def train_model(self, model, sourceTr, targetTr, sourceVl, targetVl):
         # Stops the training in case the validation loss is getting higher and revert to the best weights before this
         early_stopping = EarlyStopping(monitor='val_loss' if not self.lm_optimizer else 'loss',
-                                       patience=self.nValFails / self.validationFreq, restore_best_weights=True)
+                                       patience=self.patience,
+                                       restore_best_weights=True)
         history = model.fit(sourceTr.T, targetTr.T, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
-                            verbose=self._verbosityLevel, callbacks=[early_stopping], batch_size=256,
+                            verbose=self._verbosityLevel, callbacks=[early_stopping], batch_size=self.batch_size,
                             validation_freq=self.validationFreq)
         return history
 
     def dnnSeedEvaluation(self, args):
         # unpack arguments
-        netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, nValFails, verbose, runDir, iteration, seed = args
+        netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, patience, verbose, runDir, iteration, seed = args
 
         model = self.build_model(netStruct, netTransfer)
         self.writeToLog(f"Starting training DNN with seed {seed}\n")
@@ -277,12 +289,24 @@ class CFDNNetAdapt:
                              self._sourceVl, self._targetVl,  # validatioin samples
                              self._sourceTe, self._targetTe,  # testing samples
                              self.kMax, self.rEStop,  # maximum number of iterations and required training error
-                             self.nValFails, self.verbose,  # number of allowed validation failes and verbose flag
+                             self.patience, self.verbose,  # number of allowed validation failes and verbose flag
                              self._runDir, self._iteration,  # save directory and iteration counter
                              i])  # parallel counter
                 arguments.append(argument)
 
         return arguments
+
+    def handleGivenNetStructs(self, stepDir):
+        netStructs = self.netStructs
+        netNms = [f"{'_'.join([str(i) for i in netStruct])}" for netStruct in netStructs]
+        netDirs = [stepDir + netNm + "/" for netNm in netNms]
+
+        # create network save directory
+        for i in range(len(netStructs)):
+            self.prepOutDir(netDirs[i])
+            self.writeToLog("Created net " + str(netNms[i]) + "\n")
+
+        return netStructs, netNms, netDirs
 
     def run(self):
         self.startLog()
@@ -312,9 +336,14 @@ class CFDNNetAdapt:
             # check the last best dnn
             if self._iteration > 1:
                 self.writeToLog(f"Checking last best DNN from iteration {self._iteration - 1}\n")
-                self.checkLastBestDNN(netNondoms, smpNondoms)
+                shouldExit = self.checkLastBestDNN(netNondoms, smpNondoms)
+                if shouldExit:
+                    return
 
-            netStructs, netNms, netDirs = self.createRandomDNNs(stepDir)
+            if self.netStructs is None:
+                netStructs, netNms, netDirs = self.createRandomDNNs(stepDir)
+            else:
+                netStructs, netNms, netDirs = self.handleGivenNetStructs(stepDir)
             arguments = self.packDataForDNNTraining(netStructs)
 
             # CANNOT RUN IN PARALLEL!!! (does not work on Kraken)
@@ -337,7 +366,7 @@ class CFDNNetAdapt:
                 else:
                     deltaNSam = self.deltaNSams[self._iteration - 1]
 
-                self.nSam -= deltaNSam
+                # self.nSam -= deltaNSam
                 self._rN += self.dRN
             else:
                 epsilon = delta / (self.nComps - bads)
@@ -347,7 +376,7 @@ class CFDNNetAdapt:
             if last:
                 self.writeToLog("Done. Maximum number of samples reached\n")
                 self.finishLog()
-                exit()
+                return
 
             prevSamTotal, nSamTotal, last = self.prepareForNextIter(bestNet, prevSamTotal, nSamTotal)
 
@@ -384,10 +413,11 @@ class CFDNNetAdapt:
             "tol", "iMax", "dRN",
             "nComps", "nSeeds",
             "trainPro", "valPro", "testPro",
-            "kMax", "rEStop", "nValFails",
+            "kMax", "rEStop", "patience",
             "pMin", "pMax",
             "offSize", "popSize", "nGens",
-            "activationFunction", "_runDir"
+            "activationFunction", "_runDir",
+            "batchNorm", "dropout"
         ]
 
         # write
@@ -410,20 +440,35 @@ class CFDNNetAdapt:
         cSource = self._source[:, :nSamTotal]
         cTarget = self._target[:, :nSamTotal]
 
-        # get training, validation and testing lengths
-        trainLen = int(self.trainPro / 100 * nSamTotal)
-        valLen = int(self.valPro / 100 * nSamTotal)
-        testLen = nSamTotal - trainLen - valLen
+        # split data into training and remaining (validation + testing)
+        self._sourceTr, source_rem, self._targetTr, target_rem = train_test_split(
+            cSource.T, cTarget.T, train_size=self.trainPro / 100, random_state=self.randomState
+        )
 
-        # sort samples
-        self._sourceTr = cSource[:, :trainLen]
-        self._targetTr = cTarget[:, :trainLen]
+        # split remaining data into validation and testing
+        if self.testPro > 0:
+            self._sourceVl, self._sourceTe, self._targetVl, self._targetTe = train_test_split(
+                source_rem, target_rem, test_size=self.testPro / (self.testPro + self.valPro),
+                random_state=self.randomState
+            )
+            self._sourceTe = self._sourceTe.T
+            self._targetTe = self._targetTe.T
+        else:
+            self._sourceVl = source_rem
+            self._targetVl = target_rem
+            self._sourceTe = np.empty((self._sourceTr.shape[0], 0))
+            self._targetTe = np.empty((self._targetTr.shape[0], 0))
 
-        self._sourceVl = cSource[:, trainLen:trainLen + valLen]
-        self._targetVl = cTarget[:, trainLen:trainLen + valLen]
+        # transpose back
+        self._sourceTr = self._sourceTr.T
+        self._targetTr = self._targetTr.T
+        self._sourceVl = self._sourceVl.T
+        self._targetVl = self._targetVl.T
 
-        self._sourceTe = cSource[:, trainLen + valLen:]
-        self._targetTe = cTarget[:, trainLen + valLen:]
+        # get training, validation, and testing lengths
+        trainLen = self._sourceTr.shape[1]
+        valLen = self._sourceVl.shape[1]
+        testLen = self._sourceTe.shape[1]
 
         return nSamTotal, trainLen, valLen, testLen
 
@@ -453,7 +498,9 @@ class CFDNNetAdapt:
         if pError < self.tol:
             self.writeToLog(f"Done. Last best DNN error < {self.tol}\n")
             self.finishLog()
-            exit()
+            return True
+
+        return False
 
     def optimizeAndFindBestDNN(self, netStructs, netNms, netDirs, smpNondoms):
         # prepare
@@ -541,7 +588,8 @@ class CFDNNetAdapt:
         self.writeToLog(f"Starting verification with {bestNet}\n")
         parallelNum = self.get_available_cpu_cores()
         with multiprocessing.Pool(parallelNum) as p:
-            deltas = p.map(self.smpEvaluation, [(self.population, i, self._smpMins, self._smpMaxs, self.nPars) for i in self._toCompare])
+            deltas = p.map(self.smpEvaluation,
+                           [(self.population, i, self._smpMins, self._smpMaxs, self.nPars) for i in self._toCompare])
 
         # count non-evaluated cases
         bads = deltas.count(-1)
@@ -564,7 +612,9 @@ class CFDNNetAdapt:
             # run samples verification
             self.writeToLog(f"Starting verification with {bestNet} for substitute solutions\n")
             with multiprocessing.Pool(parallelNum) as p:
-                deltas = p.map(self.smpEvaluation, [(self.population, i, self._smpMaxs, self._smpMins, self.nPars) for i in self._toCompare])
+                deltas = p.map(self.smpEvaluation,
+                               [(self.population, i, self._smpMaxs, self._smpMins, self.nPars) for i in
+                                self._toCompare])
 
             # count still non-evaluated cases
             bads = deltas.count(-1)
@@ -792,3 +842,6 @@ class CFDNNetAdapt:
         plt.title(f"Training history iteration {iteration}, seed {seed}")
         plt.savefig(outDir + f"trainingPlot_{seed:03d}.png")
         plt.close()
+
+    def getRunDir(self):
+        return self._runDir
