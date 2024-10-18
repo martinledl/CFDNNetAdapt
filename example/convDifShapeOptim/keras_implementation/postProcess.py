@@ -89,7 +89,7 @@ def postProcess(runDir="01_algoRuns/run_20/", xName="energyEfficiency", yName="t
 
     plt.legend()
     plt.savefig(runDir + "objSpacePlot.png")
-    # plt.show()
+    plt.show()
     plt.close()
 
 

@@ -59,13 +59,13 @@ def smpEvaluation(args, **kwargs):
 
 
 # sample evaluation function
-def smpEvaluation2(i):
+def smpEvaluationCDSO(i):
     """ should not be required """
     return True
 
 
 # dnn evaluation function
-def dnnEvaluation2(args, nets, smpMins, smpMaxs, nObjs, nOuts, smpDir, prbDir, minMax, lm_optimizer):
+def dnnEvaluationCDSO(args, nets, smpMins, smpMaxs, nObjs, nOuts, smpDir, prbDir, minMax, lm_optimizer):
     """ function to return the costs for optimization """
     # geometric parameters
     maxLength = 1.0

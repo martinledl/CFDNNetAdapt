@@ -1,0 +1,81 @@
+[19:33:27.457]: startTime = 15/10/2024 19:33:27
+[19:33:27.457]: ===================SET UP=====================
+
+[19:33:27.458]: Available CPU cores: 8
+
+[19:33:27.458]: nPars = 14
+[19:33:27.458]: nOuts = 1
+[19:33:27.458]: nObjs = 2
+[19:33:27.458]: nSam = 2000
+[19:33:27.458]: deltaNSams = [2000]
+[19:33:27.458]: nNN = 1
+[19:33:27.459]: minN = 14
+[19:33:27.459]: maxN = 32
+[19:33:27.459]: nHidLay = 3
+[19:33:27.459]: tol = 0.05
+[19:33:27.459]: iMax = 3
+[19:33:27.459]: dRN = 0
+[19:33:27.459]: nComps = 0
+[19:33:27.459]: nSeeds = 1
+[19:33:27.459]: trainPro = 70
+[19:33:27.459]: valPro = 30
+[19:33:27.460]: testPro = 0
+[19:33:27.460]: kMax = 10000
+[19:33:27.460]: rEStop = 1e-05
+[19:33:27.460]: patience = 200
+[19:33:27.460]: pMin = 0.0
+[19:33:27.460]: pMax = 1.0
+[19:33:27.460]: offSize = 500
+[19:33:27.460]: popSize = 500
+[19:33:27.460]: nGens = 60
+[19:33:27.460]: activationFunction = silu
+[19:33:27.460]: _runDir = 01_algoRuns/run_30/
+[19:33:27.461]: batchNorm = False
+[19:33:27.461]: dropout = 0.15
+[19:33:27.461]: 
+[19:33:27.461]: Starting iteration 1
+[19:33:27.492]: Using 2000 training samples, 858 validation samples and 0 testSamples
+[19:33:27.492]: Created net 14_64_32_1
+[19:33:27.540]: Starting training DNN with seed 0
+[19:34:54.410]: Training of DNN with seed 0 finished
+[19:34:55.034]: Loss of DNN with seed 0 is 0.0007646240992471576
+[19:34:55.042]: Iteration 1 - Training finished
+[19:34:55.070]: Starting NSGAII optimization with net 14_64_32_1
+[19:36:47.938]: Iteration 1 - Best DNN found 14_64_32_1
+[19:36:47.980]: Starting verification with 14_64_32_1
+[19:36:48.042]: Verification of 14_64_32_1 finished, non-evaluated cases: 0
+[19:36:48.043]: Last residual - 1
+
+[19:36:48.048]: Starting iteration 2
+[19:36:48.152]: Using 4000 training samples, 1715 validation samples and 0 testSamples
+[19:36:48.152]: Checking last best DNN from iteration 1
+[19:36:48.178]: Error of best DNN from last iteration is 0.18955339213129355
+[19:36:48.179]: Created net 14_64_32_1
+[19:36:48.211]: Starting training DNN with seed 0
+[19:39:09.627]: Training of DNN with seed 0 finished
+[19:39:09.831]: Loss of DNN with seed 0 is 0.000368516833987087
+[19:39:09.842]: Iteration 2 - Training finished
+[19:39:09.881]: Starting NSGAII optimization with net 14_64_32_1
+[19:41:17.830]: Iteration 2 - Best DNN found 14_64_32_1
+[19:41:17.866]: Starting verification with 14_64_32_1
+[19:41:17.950]: Verification of 14_64_32_1 finished, non-evaluated cases: 0
+[19:41:17.951]: Last residual - 1
+
+[19:41:17.957]: Starting iteration 3
+[19:41:18.118]: Using 6000 training samples, 2320 validation samples and 0 testSamples
+[19:41:18.119]: Checking last best DNN from iteration 2
+[19:41:18.235]: Error of best DNN from last iteration is 0.1534969947232323
+[19:41:18.237]: Created net 14_64_32_1
+[19:41:18.275]: Starting training DNN with seed 0
+[19:43:17.039]: Training of DNN with seed 0 finished
+[19:43:17.249]: Loss of DNN with seed 0 is 0.0004150185559410602
+[19:43:17.251]: Iteration 3 - Training finished
+[19:43:17.291]: Starting NSGAII optimization with net 14_64_32_1
+[19:45:14.055]: Iteration 3 - Best DNN found 14_64_32_1
+[19:45:14.098]: Starting verification with 14_64_32_1
+[19:45:14.144]: Verification of 14_64_32_1 finished, non-evaluated cases: 0
+[19:45:14.145]: Last residual - 1
+
+[19:45:14.145]: Done. Maximum number of samples reached
+[19:45:14.145]: ==============================================
+[19:45:14.146]: endTime = 15/10/2024 19:45:14

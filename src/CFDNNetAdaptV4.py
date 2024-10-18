@@ -102,7 +102,7 @@ class CFDNNetAdapt:
         self._verbosityLevel = 1 if self.verbose else 0  # verbosity level for Keras
         self._nets = None  # list of neural networks
 
-        self._netTransfer = [self.activationFunction] * self.nHidLay
+        self._netTransfers = [self.activationFunction] * self.nHidLay
         self._nHid = [(self.maxN + self.minN) / 2 for _ in range(self.nHidLay)]  # mean number of neurons for each layer
         self._rN = (self.maxN - self.minN) / 2  # variance for random number of neurons selection
         self._rN *= 0.5
@@ -210,14 +210,14 @@ class CFDNNetAdapt:
 
         return netStructs, netNms, netDirs
 
-    def build_model(self, netStruct, activations):
+    def build_model(self, netStruct):
         model = Sequential()
 
         # First layer manages the input shape
         model.add(InputLayer(input_shape=(netStruct[0],)))
 
         # Add hidden layers
-        for (neurons, activation) in zip(netStruct[1:-1], activations):
+        for (neurons, activation) in zip(netStruct[1:-1], self._netTransfers):
             model.add(Dense(neurons, activation=activation))
             if self.dropout > 0:
                 model.add(Dropout(self.dropout))
@@ -240,7 +240,7 @@ class CFDNNetAdapt:
 
     def train_model(self, model, sourceTr, targetTr, sourceVl, targetVl):
         # Stops the training in case the validation loss is getting higher and revert to the best weights before this
-        early_stopping = EarlyStopping(monitor='val_loss' if not self.lm_optimizer else 'loss',
+        early_stopping = EarlyStopping(monitor='val_loss',
                                        patience=self.patience,
                                        restore_best_weights=True)
         history = model.fit(sourceTr.T, targetTr.T, validation_data=(sourceVl.T, targetVl.T), epochs=self.kMax,
@@ -248,22 +248,19 @@ class CFDNNetAdapt:
                             validation_freq=self.validationFreq)
         return history
 
-    def dnnSeedEvaluation(self, args):
-        # unpack arguments
-        netStruct, netTransfer, sourceTr, targetTr, sourceVl, targetVl, sourceTe, targetTe, kMax, rEStop, patience, verbose, runDir, iteration, seed = args
-
-        model = self.build_model(netStruct, netTransfer)
+    def dnnSeedEvaluation(self, netStruct, seed):
+        model = self.build_model(netStruct)
         self.writeToLog(f"Starting training DNN with seed {seed}\n")
-        history = self.train_model(model, sourceTr, targetTr, sourceVl, targetVl)
+        history = self.train_model(model, self._sourceTr, self._targetTr, self._sourceVl, self._targetVl)
         self.writeToLog(f"Training of DNN with seed {seed} finished\n")
 
-        stepDir = runDir + f"step_{iteration:04d}/"
+        stepDir = self._runDir + f"step_{self._iteration:04d}/"
         netNm = "_".join([str(i) for i in netStruct])
         netDir = stepDir + netNm + "/"
-        model.save(netDir + f'{netNm}_{seed:03d}.keras')
+        model.save(netDir + 'weights.keras')
 
         if self.drawTrainingPlot:
-            self.plotTrainingGraph(history, netDir, iteration, seed)
+            self.plotTrainingGraph(history, netDir, self._iteration, seed)
 
         if self.saveTrainingHistory:
             with open(netDir + f"training_history-{seed:03d}.pkl", 'wb') as file:
@@ -273,28 +270,10 @@ class CFDNNetAdapt:
                     protocol=2
                 )
 
-        loss = model.evaluate(sourceVl.T, targetVl.T, verbose=self._verbosityLevel)
+        loss = model.evaluate(self._sourceVl.T, self._targetVl.T, verbose=self._verbosityLevel)
         self.writeToLog(f"Loss of DNN with seed {seed} is {loss}\n")
 
         return loss
-
-    def packDataForDNNTraining(self, netStructs):
-        # pack arguments for parallel evaluation of dnnSeedEvaluation function
-        arguments = list()
-        for n in range(len(netStructs)):
-            for i in range(self.nSeeds):
-                argument = ([netStructs[n],  # network architectures
-                             [self.activationFunction] * self.nHidLay,  # transfer functions
-                             self._sourceTr, self._targetTr,  # training samples
-                             self._sourceVl, self._targetVl,  # validatioin samples
-                             self._sourceTe, self._targetTe,  # testing samples
-                             self.kMax, self.rEStop,  # maximum number of iterations and required training error
-                             self.patience, self.verbose,  # number of allowed validation failes and verbose flag
-                             self._runDir, self._iteration,  # save directory and iteration counter
-                             i])  # parallel counter
-                arguments.append(argument)
-
-        return arguments
 
     def handleGivenNetStructs(self, stepDir):
         netStructs = self.netStructs
@@ -344,11 +323,11 @@ class CFDNNetAdapt:
                 netStructs, netNms, netDirs = self.createRandomDNNs(stepDir)
             else:
                 netStructs, netNms, netDirs = self.handleGivenNetStructs(stepDir)
-            arguments = self.packDataForDNNTraining(netStructs)
 
             # CANNOT RUN IN PARALLEL!!! (does not work on Kraken)
-            for i in range(self.nSeeds):
-                cError = self.dnnSeedEvaluation(arguments[i])
+            for n in range(self.nNN):
+                for i in range(self.nSeeds):
+                    cError = self.dnnSeedEvaluation(netStructs[n], i)
 
             if self.toPlotReg:
                 self.plotRegressionGraph(netStructs, netNms, netDirs)
@@ -786,7 +765,8 @@ class CFDNNetAdapt:
             if not os.path.exists(outDir + dr):
                 os.makedirs(outDir + dr)
 
-    def plotRegressionGraph(self, netStructs, netNms, netDirs):
+    # NOTE: only prepared for two outputs
+    def plotRegressionGraph(self, netDirs):
         # loop over required net directories
         for netDir in netDirs:
             # read directory
@@ -803,16 +783,16 @@ class CFDNNetAdapt:
                         optimizer=SGD(learning_rate=1.0),
                         loss=lm.MeanSquaredError())
 
-                out = model.predict(self._sourceTe.T).T
+                out = model.predict(self._sourceVl.T).T
 
                 # transpose data
-                targetTe = self._targetTe.T
+                targetVl = self._targetVl.T
                 out = out.T
 
-                # plot the result ## NOTE: only prepared for two outputs
+                # plot the result
                 mS = 7
-                plt.plot(targetTe[:, 0], out[:, 0], 'o', ms=mS, color="tab:red")
-                plt.plot(targetTe[:, 1], out[:, 1], '^', ms=mS, color="tab:green")
+                plt.plot(targetVl[:, 0], out[:, 0], 'o', ms=mS, color="tab:red")
+                plt.plot(targetVl[:, 1], out[:, 1], '^', ms=mS, color="tab:green")
                 plt.plot([-0.2, 1.2], [-0.2, 1.2], "k-")
                 plt.xlabel("target data")
                 plt.ylabel("estimated data")
