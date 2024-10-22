@@ -4,10 +4,10 @@ import csv
 
 import levenberg_marquardt as lm
 from tensorflow.keras.optimizers.legacy import SGD
-from testFunctions import ZDT6
+from testFunctions import ZDT1, ZDT2, ZDT3, ZDT4, ZDT6
 
 
-def dnnEvaluation(args, nets, lm_optimizer=False, **kwargs):
+def dnnEvaluationZDT(args, nets, lm_optimizer=False, **kwargs):
     """ function to return the costs for optimization """
 
     netIn = np.array(args)
@@ -34,7 +34,7 @@ def dnnEvaluation(args, nets, lm_optimizer=False, **kwargs):
     return costOut
 
 
-def smpEvaluation(args, **kwargs):
+def smpEvaluationZDT(args, zdt_function, **kwargs):
     population, i, smpMins, smpMaxs, nPars = args
     netPars = population[i].variables[:]
     netOuts = population[i].objectives[:]
@@ -43,7 +43,7 @@ def smpEvaluation(args, **kwargs):
     for p in range(len(netPars)):
         netPars[p] = netPars[p] * (smpMaxs[p] - smpMins[p]) + smpMins[p]
 
-    checkOut = ZDT6(netPars)
+    checkOut = zdt_function(netPars)
 
     # rescale for ANN
     for co in range(len(checkOut)):
@@ -56,6 +56,26 @@ def smpEvaluation(args, **kwargs):
     delta += abs(netOuts[1] - checkOut[1])
 
     return delta
+
+
+def smpEvaluationZDT1(args, **kwargs):
+    return smpEvaluationZDT(args, ZDT1, **kwargs)
+
+
+def smpEvaluationZDT2(args, **kwargs):
+    return smpEvaluationZDT(args, ZDT2, **kwargs)
+
+
+def smpEvaluationZDT3(args, **kwargs):
+    return smpEvaluationZDT(args, ZDT3, **kwargs)
+
+
+def smpEvaluationZDT4(args, **kwargs):
+    return smpEvaluationZDT(args, ZDT4, **kwargs)
+
+
+def smpEvaluationZDT6(args, **kwargs):
+    return smpEvaluationZDT(args, ZDT6, **kwargs)
 
 
 # sample evaluation function

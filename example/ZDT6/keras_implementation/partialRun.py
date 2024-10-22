@@ -14,8 +14,8 @@ if __name__ == "__main__":
     #                          nValFails=10, smpDir=r"../00_prepData/")
 
     algorithm = CFDNNetAdapt(
-        dnnEvaluation=evalF.dnnEvaluation,
-        smpEvaluation=evalF.smpEvaluation2,
+        dnnEvaluation=evalF.dnnEvaluationZDT,
+        smpEvaluation=evalF.smpEvaluationZDT6,
         lm_optimizer=False,
         activationFunction="tanh",
         nPars=2,

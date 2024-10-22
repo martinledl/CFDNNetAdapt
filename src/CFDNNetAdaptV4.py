@@ -98,6 +98,9 @@ class CFDNNetAdapt:
         self.drawTrainingPlot = drawTrainingPlot  # draw training plot
         self.saveTrainingHistory = saveTrainingHistory  # save training history
 
+        if self.netStructs is not None:
+            self.nNN = len(self.netStructs)
+
         # ------------------ internal variables ------------------
         self._verbosityLevel = 1 if self.verbose else 0  # verbosity level for Keras
         self._nets = None  # list of neural networks
