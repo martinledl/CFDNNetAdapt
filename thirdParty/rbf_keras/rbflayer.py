@@ -17,14 +17,14 @@ class InitCentersRandom(Initializer):
         self.X = X
 
     def __call__(self, shape, dtype=None):
-	assert shape[1] == self.X.shape[1]
-  	idx = np.random.randint(self.X.shape[0], size=shape[0])
+        # assert shape[1] == self.X.shape[1]
+        idx = np.random.randint(self.X.shape[0], size=shape[0])
 
-	# type checking to access elements of data correctly
-  	if type(self.X) == np.ndarray:
-    		return self.X[idx, :]
-  	elif type(self.X) == pd.core.frame.DataFrame:
-    		return self.X.iloc[idx, :]
+        # type checking to access elements of data correctly
+        if type(self.X) == np.ndarray:
+                return self.X[idx, :]
+        elif type(self.X) == pd.core.frame.DataFrame:
+                return self.X.iloc[idx, :]
 
 
 class RBFLayer(Layer):
@@ -88,7 +88,7 @@ class RBFLayer(Layer):
         # return ret
 
     def compute_output_shape(self, input_shape):
-        return (input_shape[0], self.output_dim)
+        return input_shape[0], self.output_dim
 
     def get_config(self):
         # have to define get_config to be able to use model_from_json
