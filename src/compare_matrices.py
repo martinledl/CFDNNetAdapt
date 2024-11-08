@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import sys
 import dill as pickle
-sys.path.append('../../thirdParty')
+from scipy.stats import wasserstein_distance
+sys.path.append('../thirdParty')
 
 
 def hamming_similarity(A, B):
@@ -25,19 +26,25 @@ def dice_similarity(A, B):
     return 2 * intersection / (A.sum() + B.sum())
 
 
+def earth_mover_distance(A, B):
+    """Calculates the Earth Mover's Distance between two matrices A and B."""
+    return wasserstein_distance(A.flatten(), B.flatten())
+
+
 # Example usage
 if __name__ == "__main__":
-    with open('ZZ_dataDirs/topoOptim_05112024151343/optimOut.plat', 'rb') as file:
+    with open('../example/topoOptim/results/topoOptim_05112024151343/optimOut.plat', 'rb') as file:
         [population, result, name, problem] = pickle.load(file, encoding="latin1")
 
     # from result take the best solution (minimal x.objectives[0] and x.objectives[1]) and show its variables
     sorted_result = sorted(result, key=lambda x: x.objectives[0] + x.objectives[1])
     A = np.array(sorted_result[0].variables[0]).reshape((10, 52))
 
-    df = pd.read_csv('00_prepTopoOptimData/feasible52x10.csv')
+    df = pd.read_csv('../example/topoOptim/00_prepTopoOptimData/feasible52x10.csv')
     sorted_df = df.sort_values(by=["pressureRecoveryFactor", "uniformityIndex"])
     B = np.array(sorted_df.iloc[0, 2:]).reshape((10, 52))
 
     print("Hamming Similarity:", hamming_similarity(A, B))
     print("Jaccard Similarity:", jaccard_similarity(A, B))
     print("Dice Similarity:", dice_similarity(A, B))
+    print("Earth Mover's Distance:", earth_mover_distance(A, B))
