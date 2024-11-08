@@ -1,10 +1,12 @@
 import numpy as np
 import math
 import csv
-
+import os
+import random
 import levenberg_marquardt as lm
 from tensorflow.keras.optimizers.legacy import SGD
 from testFunctions import ZDT1, ZDT2, ZDT3, ZDT4, ZDT6
+from topoCheck import topoCheck
 
 
 def dnnEvaluationZDT(args, nets, lm_optimizer=False, **kwargs):
@@ -228,3 +230,36 @@ def dnnEvaluationCDSO(args, nets, smpMins, smpMaxs, nObjs, nOuts, smpDir, prbDir
     # if not return big dummy value
     else:
         return np.array([dummy] * nObjs)
+
+
+# the optimized function
+def auxFunction(parameters, net, yDim, xDim, yLim, gamma0, gamma1, gammaF, outFile, nObjs):
+    # assign ID to the case
+    caseID = os.getpid()
+
+    # check the topology first
+    pars = np.array(parameters[0])
+    data = np.reshape(pars, (yDim, xDim))
+    data = np.flipud(data)
+
+    check, totalMess1, totalMess0, flowAccess = topoCheck(data, correct=False, yLim=yLim)
+
+    if check:
+        # evaluate neural network
+        netIn = np.array(parameters[0])
+        netIn = netIn.reshape(yDim, xDim, 1)
+        netIn = np.expand_dims(netIn, axis=0)
+        out = net(netIn, training=False)
+        out = np.array(out)[0]
+        with open(outFile, 'a') as file:
+            file.write(f'{caseID},good,{",".join([str(int(i)) for i in parameters[0]])},{out[0]},{out[1]}\n')
+        return out
+
+    else:
+        toReturn = float(gamma1 * totalMess1 + gamma0 * totalMess0 + gammaF * (xDim - flowAccess))
+        with open(outFile, 'a') as file:
+            file.write(
+                repr(caseID) + ",bad," + ",".join(['1' if i else '0' for i in parameters[0]]) + "," + str(toReturn) + "," + str(
+                    toReturn) + "\n")
+
+        return [toReturn] * nObjs
