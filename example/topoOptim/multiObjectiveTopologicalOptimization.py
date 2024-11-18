@@ -20,7 +20,7 @@ import platypusModV3 as platypus
 
 sys.path.append('../../src')
 from evalFunctions import auxFunction
-from postProcess import plot_data
+from postProcess import plot_data, plot_pareto_fronts
 from compare_matrices import hamming_similarity, jaccard_similarity, dice_similarity, earth_mover_distance
 
 
@@ -39,8 +39,10 @@ def getModel(data_shape):
     model.add(MaxPooling2D(pool_size=(2, 5), padding='same'))
 
     model.add(Flatten())
-    model.add(Dense(256, activation='relu'))
-    model.add(Dense(64, activation='relu'))
+    model.add(Dense(256, activation='gelu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(64, activation='gelu'))
+    model.add(Dropout(0.2))
     model.add(Dense(2, activation='linear'))
     return model
 
@@ -55,7 +57,7 @@ def trainModel(data_shape):
     df.drop_duplicates(inplace=True)
 
     # train model
-    early_stopping = EarlyStopping(monitor='loss', patience=10)
+    early_stopping = EarlyStopping(monitor='loss', patience=30)
     X, y = df.drop(['pressureRecoveryFactor', 'uniformityIndex'], axis=1), df[
         ['pressureRecoveryFactor', 'uniformityIndex']]
 
@@ -79,7 +81,7 @@ def run_optimization(dataDir, injectedPopFile, xDim, yDim, yLim, logFile, outFil
     method = "NSAGII"  # optimization algorithm
     nGens = 20  # number of generations
     parallelNum = 8  # number of parallel running processes
-    popSize = parallelNum * 200  # size of a population
+    popSize = 1600  # size of a population
     nIter = popSize * nGens  # number of function evaluations
 
     nPars = 1  # number of parameters
@@ -128,18 +130,30 @@ def run_optimization(dataDir, injectedPopFile, xDim, yDim, yLim, logFile, outFil
                 injectedSolutions.append(individuum)
 
         # run the optimization algorithm
+        archive = []
         with platypus.MultiprocessingEvaluator(parallelNum) as evaluator:
-            algorithm = platypus.NSGAII(problem, population_size=popSize,
-                                        generator=platypus.InjectedPopulation(injectedSolutions), evaluator=evaluator,
-                                        variator=platypus.GAOperatorWithTopoCorrection(platypus.HUX(),
-                                                                                       platypus.BitFlip(),
-                                                                                       xDim,
-                                                                                       yDim, yLim))
+            algorithm = platypus.NSGAII(
+                problem,
+                population_size=popSize,
+                archive=archive,
+                generator=platypus.InjectedPopulation(injectedSolutions),
+                evaluator=evaluator,
+                variator=platypus.GAOperatorWithTopoCorrection(platypus.HUX(), platypus.BitFlip(), xDim, yDim, yLim)
+            )
+
             algorithm.run(nIter)
+
 
         with open(dataDir + "optimOut.plat", 'wb') as file:
             pickle.dump(
                 [algorithm.population, algorithm.result, method, problem],
+                file,
+                protocol=2
+            )
+
+        with open(dataDir + "archive.plat", 'wb') as file:
+            pickle.dump(
+                [archive, nGens, popSize, nIter],
                 file,
                 protocol=2
             )
@@ -215,6 +229,16 @@ def main():
         [population, result, name, problem] = pickle.load(file, encoding="latin1")
 
     plot_data(None, result, f'{dataDir}/result.png', limit=None)
+
+    with open(f'{dataDir}archive.plat', 'rb') as file:
+        [archive, n_gens, pop_size, n_iter] = pickle.load(file, encoding="latin1")
+
+    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-limit10.png', limit_x=10,
+                       limit_y=10)
+    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-limit0.png', limit_x=0,
+                       limit_y=0)
+    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-nolimit.png', limit_x=None,
+                       limit_y=None)
 
     compare_with_best(result, logFile)
 
