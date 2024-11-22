@@ -1,4 +1,4 @@
-import csv
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -50,7 +50,7 @@ def plot_data(all_solutions, optimal, figname="allData.png", limit=None):
     plt.show()
 
 
-def plot_pareto_fronts(archive, n_gens, pop_size, output_file='pareto_fronts.png', limit_x=10, limit_y=10):
+def plot_pareto_fronts(archive, n_gens, pop_size, output_file='pareto_fronts.png', limit_x=10, limit_y=10, reference_count=0):
     plt.figure(figsize=(16, 9))
     n_gens += 1
     # Separates the archive into generations
@@ -62,9 +62,18 @@ def plot_pareto_fronts(archive, n_gens, pop_size, output_file='pareto_fronts.png
         objectives = [sol for sol in objectives if (limit_x is None or sol[0] < limit_x) and (limit_y is None or sol[1] < limit_y)]
         plt.scatter([sol[0] for sol in objectives], [sol[1] for sol in objectives], color=colors[i])
 
+    if reference_count > 0:
+        df = pd.read_csv('00_prepTopoOptimData/feasible52x10.csv')
+        df = df.sort_values(by=["pressureRecoveryFactor", "uniformityIndex"])
+        plt.scatter(df["pressureRecoveryFactor"][:reference_count],
+                    df["uniformityIndex"][:reference_count],
+                    color='black',
+                    marker='x',
+                    label='reference')
+
     plt.xlabel("pressureRecoveryFactor")
     plt.ylabel("uniformityIndex")
-    plt.legend([f"G{i}" for i in range(n_gens)], bbox_to_anchor=(1.02, 1), loc='upper left')
+    plt.legend([f"G{i}" for i in range(n_gens)], bbox_to_anchor=(1.02, 1), loc='upper left', prop={'size': 6})
     plt.title("Pareto fronts over generations")
     plt.savefig(output_file)
     plt.show()
@@ -82,13 +91,4 @@ if __name__ == '__main__':
     with open(f'{data_dir}archive.plat', 'rb') as file:
         [archive, n_gens, pop_size, n_iter] = pickle.load(file, encoding="latin1")
 
-    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{data_dir}pareto_fronts-limit10.png', limit_x=10, limit_y=10)
-    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{data_dir}pareto_fronts-limit0.png', limit_x=0, limit_y=0)
-    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{data_dir}pareto_fronts-nolimit.png', limit_x=None, limit_y=None)
-
-    # Extract the optimal solutions
-    # plot_data(None, result, figname="allData.png", limit=150)
-
-
-    # TODO: vyvoj pareto fronty pres generace (platypus Archive)
-    # vykreslit x nejlepsich z referencnich
+    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{data_dir}pareto_fronts-limit0-references50.png', limit_x=0, limit_y=0, reference_count=50)

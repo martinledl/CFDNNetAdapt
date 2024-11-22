@@ -79,7 +79,7 @@ def trainModel(data_shape):
 def run_optimization(dataDir, injectedPopFile, xDim, yDim, yLim, logFile, outFile, model):
     # optimization settings
     method = "NSAGII"  # optimization algorithm
-    nGens = 20  # number of generations
+    nGens = 40  # number of generations
     parallelNum = 8  # number of parallel running processes
     popSize = 1600  # size of a population
     nIter = popSize * nGens  # number of function evaluations
@@ -162,7 +162,7 @@ def run_optimization(dataDir, injectedPopFile, xDim, yDim, yLim, logFile, outFil
             file.write("No injectedPopFile, quitting\n")
 
 
-def compare_with_best(result, logFile):
+def compare_with_best(result, logFile, outFile=None):
     sorted_result = sorted(result, key=lambda x: x.objectives[0] + x.objectives[1])
     A = np.array(sorted_result[0].variables[0]).reshape((10, 52))
 
@@ -179,6 +179,13 @@ def compare_with_best(result, logFile):
         file.write(output)
 
     print(output)
+
+    if outFile is not None:
+        plt.figure(figsize=(16, 9))
+        plt.imshow(A, cmap='viridis')
+        plt.colorbar()
+        plt.title("Visualization of the best solution")
+        plt.savefig(outFile)
 
 
 def main():
@@ -228,19 +235,17 @@ def main():
     with open(f'{dataDir}optimOut.plat', 'rb') as file:
         [population, result, name, problem] = pickle.load(file, encoding="latin1")
 
-    plot_data(None, result, f'{dataDir}/result.png', limit=None)
-
     with open(f'{dataDir}archive.plat', 'rb') as file:
         [archive, n_gens, pop_size, n_iter] = pickle.load(file, encoding="latin1")
 
     plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-limit10.png', limit_x=10,
-                       limit_y=10)
+                       limit_y=10, reference_count=10)
     plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-limit0.png', limit_x=0,
-                       limit_y=0)
+                       limit_y=0, reference_count=10)
     plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-nolimit.png', limit_x=None,
-                       limit_y=None)
+                       limit_y=None, reference_count=10)
 
-    compare_with_best(result, logFile)
+    compare_with_best(result, logFile, outFile=f'{dataDir}bestSolution.png')
 
     # log
     with open(logFile, 'a') as file:
@@ -250,10 +255,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-    # experimentDir = './ZZ_dataDirs/topoOptim_08112024134501/'
-    #
-    # with open(f'{experimentDir}optimOut.plat', 'rb') as file:
-    #     [population, result, name, problem] = pickle.load(file, encoding="latin1")
-    #
-    # plot_data(None, result, f'{experimentDir}/allData.png', limit=100)
