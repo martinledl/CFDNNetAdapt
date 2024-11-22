@@ -79,6 +79,15 @@ def plot_pareto_fronts(archive, n_gens, pop_size, output_file='pareto_fronts.png
     plt.show()
 
 
+def visualize_result(result, output_file='visualization.png', x_dim=52, y_dim=10):
+    parameters = np.array(result.variables).reshape((y_dim, x_dim))
+    plt.figure(figsize=(16, 4))
+    plt.imshow(parameters, cmap='viridis')
+    plt.suptitle("Visualization of the best solution")
+    plt.title(f"pressureRecoveryFactor: {result.objectives[0]:.3f}, uniformityIndex: {result.objectives[1]:.3f}")
+    plt.savefig(output_file)
+
+
 if __name__ == '__main__':
     import dill as pickle
     import sys
@@ -87,8 +96,17 @@ if __name__ == '__main__':
     # Load the data
     # with open('ZZ_dataDirs/topoOptim_14112024145812/optimOut.plat', 'rb') as file:
     #     [population, result, name, problem] = pickle.load(file, encoding="latin1")
-    data_dir = 'ZZ_dataDirs/topoOptim_18112024122615/'
-    with open(f'{data_dir}archive.plat', 'rb') as file:
-        [archive, n_gens, pop_size, n_iter] = pickle.load(file, encoding="latin1")
+    # data_dir = 'ZZ_dataDirs/topoOptim_22112024154013/'
+    # with open(f'{data_dir}archive.plat', 'rb') as file:
+    #     [archive, n_gens, pop_size, n_iter] = pickle.load(file, encoding="latin1")
 
-    plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{data_dir}pareto_fronts-limit0-references50.png', limit_x=0, limit_y=0, reference_count=50)
+    # plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{data_dir}pareto_fronts-limit0-references50.png', limit_x=0, limit_y=0, reference_count=50)
+
+    with open('00_prepTopoOptimData/feasible52x10-capped10.csv', 'r') as file:
+        feasible = pd.read_csv(file)
+
+    feasible = feasible.sort_values(by=["pressureRecoveryFactor", "uniformityIndex"])
+    best = feasible.iloc[0]
+    best.variables = np.array(best[:-2]).reshape((10, 52))
+    best.objectives = [best[520], best[521]]
+    visualize_result(best, output_file='00_prepTopoOptimData/best_training_solution.png')

@@ -20,7 +20,7 @@ import platypusModV3 as platypus
 
 sys.path.append('../../src')
 from evalFunctions import auxFunction
-from postProcess import plot_data, plot_pareto_fronts
+from postProcess import plot_data, plot_pareto_fronts, visualize_result
 from compare_matrices import hamming_similarity, jaccard_similarity, dice_similarity, earth_mover_distance
 
 
@@ -39,9 +39,9 @@ def getModel(data_shape):
     model.add(MaxPooling2D(pool_size=(2, 5), padding='same'))
 
     model.add(Flatten())
-    model.add(Dense(256, activation='gelu'))
+    model.add(Dense(256, activation='relu'))
     model.add(Dropout(0.2))
-    model.add(Dense(64, activation='gelu'))
+    model.add(Dense(64, activation='relu'))
     model.add(Dropout(0.2))
     model.add(Dense(2, activation='linear'))
     return model
@@ -181,11 +181,7 @@ def compare_with_best(result, logFile, outFile=None):
     print(output)
 
     if outFile is not None:
-        plt.figure(figsize=(16, 9))
-        plt.imshow(A, cmap='viridis')
-        plt.colorbar()
-        plt.title("Visualization of the best solution")
-        plt.savefig(outFile)
+        visualize_result(sorted_result[0], output_file=outFile)
 
 
 def main():
@@ -245,7 +241,7 @@ def main():
     plot_pareto_fronts(archive, n_gens, pop_size, output_file=f'{dataDir}pareto_fronts-nolimit.png', limit_x=None,
                        limit_y=None, reference_count=10)
 
-    compare_with_best(result, logFile, outFile=f'{dataDir}bestSolution.png')
+    compare_with_best(result, logFile, outFile=f'{dataDir}best_solution.png')
 
     # log
     with open(logFile, 'a') as file:
